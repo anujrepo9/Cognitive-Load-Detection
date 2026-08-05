@@ -1,12 +1,21 @@
 import { useState } from "react"
 import { useNavigate, Link } from "react-router-dom"
+import { motion } from "framer-motion"
+import { Mail, Lock, BrainCircuit, ArrowRight, Eye, EyeOff } from "lucide-react"
 import { useAuth } from "../context/AuthContext"
 import { authAPI } from "../services/api"
+
+const highlights = [
+  "Real-time cognitive load detection",
+  "Privacy-preserving local analysis",
+  "Actionable recommendations to stay focused",
+]
 
 export default function Login() {
   const [form, setForm] = useState({ email: "", password: "" })
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [showPw, setShowPw] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
 
@@ -26,54 +35,115 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-gray-100 mb-1">CogniLoad</h1>
-        <p className="text-gray-500 text-sm mb-8">Sign in to your account</p>
+    <div className="min-h-screen bg-white dark:bg-slate-950 flex">
+      {/* Marketing panel */}
+      <div className="hidden lg:flex w-1/2 relative overflow-hidden bg-gradient-to-br
+        from-primary to-accent text-white flex-col justify-between p-12">
+        <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
+        <div className="absolute -bottom-32 -left-16 w-96 h-96 rounded-full bg-black/10 blur-3xl" />
 
-        <form onSubmit={handle} className="space-y-4">
-          <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Email</label>
-            <input
-              type="email" required
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2.5
-                text-sm text-gray-100 placeholder-gray-600 focus:outline-none
-                focus:border-brand focus:ring-1 focus:ring-brand transition"
-              placeholder="you@example.com"
-            />
+        <div className="flex items-center gap-2.5 relative">
+          <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur
+            flex items-center justify-center">
+            <BrainCircuit className="w-6 h-6" />
           </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Password</label>
-            <input
-              type="password" required
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2.5
-                text-sm text-gray-100 placeholder-gray-600 focus:outline-none
-                focus:border-brand focus:ring-1 focus:ring-brand transition"
-              placeholder="••••••••"
-            />
-          </div>
+          <span className="text-xl font-bold">CogniLoad</span>
+        </div>
 
-          {error && <p className="text-red-400 text-xs">{error}</p>}
+        <div className="relative">
+          <h2 className="text-3xl font-bold leading-snug mb-4">
+            Monitor your cognitive load with AI precision
+          </h2>
+          <p className="text-white/80 mb-8 max-w-md">
+            Understand how your brain performs in real time. Adapt, optimize, excel.
+          </p>
+          <ul className="space-y-3">
+            {highlights.map((h) => (
+              <li key={h} className="flex items-center gap-3">
+                <span className="w-5 h-5 rounded-full bg-white/20 flex items-center
+                  justify-center text-xs">✓</span>
+                <span className="text-sm text-white/90">{h}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
 
-          <button
-            type="submit" disabled={loading}
-            className="w-full bg-brand hover:bg-brand-dark disabled:opacity-50
-              text-white font-medium py-2.5 rounded-lg text-sm transition-colors"
-          >
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-
-        <p className="text-center text-gray-500 text-xs mt-6">
-          No account?{" "}
-          <Link to="/register" className="text-brand hover:underline">
-            Register
-          </Link>
+        <p className="text-white/60 text-sm relative">
+          © 2025 CogniLoad · Cognitive Load Detector
         </p>
+      </div>
+
+      {/* Form panel */}
+      <div className="flex-1 flex items-center justify-center px-4 py-10">
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }} className="w-full max-w-sm">
+          <div className="lg:hidden flex items-center gap-2.5 mb-8">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent
+              flex items-center justify-center">
+              <BrainCircuit className="w-6 h-6 text-white" />
+            </div>
+            <span className="text-xl font-bold text-gray-900 dark:text-white">CogniLoad</span>
+          </div>
+
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+            Welcome back
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-8">
+            Sign in to your account
+          </p>
+
+          <form onSubmit={handle} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600
+                dark:text-gray-300 mb-1.5">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input type="email" required value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="input pl-9" placeholder="you@example.com" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600
+                dark:text-gray-300 mb-1.5">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input type={showPw ? "text" : "password"} required value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className="input pl-9 pr-10" placeholder="••••••••" />
+                <button type="button" onClick={() => setShowPw(!showPw)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400
+                    hover:text-gray-600 dark:hover:text-gray-200">
+                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-xs text-gray-500
+                dark:text-gray-400">
+                <input type="checkbox" className="rounded accent-primary" />
+                Remember me
+              </label>
+              <a href="#" className="text-xs text-primary hover:underline">Forgot password?</a>
+            </div>
+
+            {error && <p className="text-danger text-xs">{error}</p>}
+
+            <button type="submit" disabled={loading}
+              className="btn-primary w-full">
+              {loading ? "Signing in…" : "Sign in"}
+              {!loading && <ArrowRight className="w-4 h-4" />}
+            </button>
+          </form>
+
+          <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
+            No account?{" "}
+            <Link to="/register" className="text-primary font-medium hover:underline">
+              Create one
+            </Link>
+          </p>
+        </motion.div>
       </div>
     </div>
   )

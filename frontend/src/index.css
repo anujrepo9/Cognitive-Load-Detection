@@ -3,8 +3,122 @@
 @tailwind utilities;
 
 @layer base {
-  body { @apply bg-gray-950 text-gray-100 font-sans antialiased; }
-  ::-webkit-scrollbar { @apply w-1.5; }
-  ::-webkit-scrollbar-track { @apply bg-gray-900; }
-  ::-webkit-scrollbar-thumb { @apply bg-gray-700 rounded-full; }
+  body {
+    @apply bg-surface-light text-gray-900 font-sans antialiased transition-colors duration-300;
+  }
+  .dark body {
+    @apply bg-surface-dark text-gray-100;
+  }
+  ::-webkit-scrollbar { @apply w-1.5 h-1.5; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-gray-600/50 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-gray-500/60; }
+
+  input, select, textarea { @apply outline-none; }
+}
+
+@layer components {
+  /* Premium card */
+.card {
+    @apply bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800
+      rounded-2xl shadow-sm dark:shadow-none
+      transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5;
+  }
+
+  /* Glassmorphism */
+  .glass {
+    @apply bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl
+      border border-white/60 dark:border-slate-800/60 shadow-lg;
+  }
+
+  .glass-dark {
+    @apply bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 shadow-xl;
+  }
+
+  /* Gradient text */
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent;
+  }
+
+  /* Skeleton loader */
+  .skeleton {
+    @apply bg-gray-200 dark:bg-slate-800 rounded-lg relative overflow-hidden;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.08),
+      transparent
+    );
+    animation: shimmer 2s linear infinite;
+    background-size: 200% 100%;
+  }
+
+  /* Input field */
+  .input {
+    @apply w-full bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700
+      rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100
+      placeholder-gray-400 dark:placeholder-gray-500
+      focus:border-primary focus:ring-2 focus:ring-primary/20
+      transition-all duration-200;
+  }
+
+  /* Button variants */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
+      bg-primary hover:bg-primary-light text-white text-sm font-medium
+      rounded-xl shadow-glow-primary hover:shadow-lg
+      transition-all duration-200 hover:-translate-y-0.5
+      active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
+      bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700
+      text-gray-700 dark:text-gray-200 text-sm font-medium
+      rounded-xl border border-gray-200 dark:border-slate-700
+      transition-all duration-200 hover:-translate-y-0.5 active:scale-95;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
+      text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800
+      text-sm font-medium rounded-xl transition-all duration-200;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
+      bg-danger hover:bg-danger-light text-white text-sm font-medium
+      rounded-xl shadow-lg transition-all duration-200 hover:-translate-y-0.5
+      active:scale-95;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
+      text-xs font-medium border transition-colors;
+  }
+
+  /* Section title */
+  .section-title {
+    @apply text-sm font-semibold text-gray-700 dark:text-gray-200
+      uppercase tracking-wider;
+  }
+
+  /* Table */
+  .table-row {
+    @apply border-b border-gray-100 dark:border-slate-800
+      hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors;
+  }
+
+  /* Progress bar */
+  .progress-track {
+    @apply h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden;
+  }
+.progress-fill {
+    @apply h-full rounded-full transition-all duration-500;
+  }
 }
