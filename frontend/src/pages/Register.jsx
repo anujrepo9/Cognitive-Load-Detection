@@ -24,8 +24,8 @@ export default function Register() {
     setError("")
     setLoading(true)
     try {
-      const { data } = await authAPI.register(form)
-      login(data.user, data.access_token)
+const { data } = await authAPI.register(form)
+      login(data.user, data.access_token, data.refresh_token)
       navigate("/dashboard")
     } catch (err) {
       setError(err.response?.data?.detail || "Registration failed")

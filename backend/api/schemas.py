@@ -32,9 +32,48 @@ class UserOut(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    access_token: str
-    token_type:   str = "bearer"
-    user:         UserOut
+    access_token:  str
+    refresh_token: str
+    token_type:    str = "bearer"
+    user:          UserOut
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class RefreshResponse(BaseModel):
+    access_token:  str
+    refresh_token: str
+    token_type:    str = "bearer"
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+
+class ProfileUpdateRequest(BaseModel):
+    name:  Optional[str] = None
+    email: Optional[EmailStr] = None
+
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v):
+        if v is not None and not v.strip():
+            raise ValueError("Name cannot be empty")
+        return v
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password:     str
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_min_length(cls, v):
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return v
 
 
 # ── Behavior ──────────────────────────────────────────────────────────────────

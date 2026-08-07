@@ -26,9 +26,13 @@ api.interceptors.response.use(
 )
 
 export const authAPI = {
-  login:    (data) => api.post("/auth/login", data),
-  register: (data) => api.post("/auth/register", data),
-  profile:  ()     => api.get("/auth/profile"),
+  login:          (data) => api.post("/auth/login", data),
+  register:       (data) => api.post("/auth/register", data),
+  profile:        ()     => api.get("/auth/profile"),
+  refresh:        (data) => api.post("/auth/refresh", data),
+  logout:         (data) => api.post("/auth/logout", data),
+  updateProfile:  (data) => api.patch("/auth/profile", data),
+  changePassword: (data) => api.post("/auth/change-password", data),
 }
 
 export const behaviorAPI = {

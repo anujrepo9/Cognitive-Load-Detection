@@ -22,3 +22,10 @@ MODEL_ACCURACY            = float(os.getenv("MODEL_ACCURACY", 0.0)) if os.getenv
 LOG_LEVEL      = os.getenv("LOG_LEVEL", "INFO")
 LOG_DIR        = os.getenv("LOG_DIR", "")
 MAX_BODY_SIZE  = int(os.getenv("MAX_BODY_SIZE", 1_048_576))   # 1 MB default
+
+# ── Auth hardening (Phase 3) ─────────────────────────────────────────────────
+REFRESH_TOKEN_BYTES   = int(os.getenv("REFRESH_TOKEN_BYTES", 48))   # random bytes
+RATE_LIMIT_LOGIN_MIN  = int(os.getenv("RATE_LIMIT_LOGIN_MIN", 5))       # attempts / window
+RATE_LIMIT_LOGIN_WINDOW = int(os.getenv("RATE_LIMIT_LOGIN_WINDOW", 60))  # seconds
+RATE_LIMIT_REGISTER_MIN = int(os.getenv("RATE_LIMIT_REGISTER_MIN", 5))
+RATE_LIMIT_REGISTER_WINDOW = int(os.getenv("RATE_LIMIT_REGISTER_WINDOW", 300))  # seconds

@@ -25,6 +25,24 @@ class User(Base):
 
     sessions   = relationship("Session", back_populates="user",
                                cascade="all, delete-orphan")
+    refresh_tokens = relationship("RefreshToken", back_populates="user",
+                                  cascade="all, delete-orphan")
+
+
+# ── Refresh Tokens ────────────────────────────────────────────────────────────
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False)
+    token_hash = Column(String(128), unique=True, index=True, nullable=False)  # SHA-256
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    revoked    = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", back_populates="refresh_tokens")
 
 
 # ── Sessions ──────────────────────────────────────────────────────────────────
