@@ -29,3 +29,8 @@ def init_db():
     """Create all tables (called once on startup)."""
     from database import models   # noqa: F401 — ensures models are registered
     Base.metadata.create_all(bind=engine)
+
+
+def dispose_engine():
+    """Gracefully close the connection pool (called once on shutdown)."""
+    engine.dispose()

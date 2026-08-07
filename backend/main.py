@@ -1,19 +1,18 @@
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import CORS_ORIGINS
-from database.db import init_db
+from config import CORS_ORIGINS, MAX_BODY_SIZE
+from core.logging import get_logger, setup_logging
+from core.errors import register_exception_handlers
+from core.middleware import RequestIDMiddleware, MaxBodySizeMiddleware
+from database.db import init_db, dispose_engine
 from services.predictor import get_predictor
 from routes import auth, behavior, prediction, dashboard, recommendation
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s:%(name)s:%(message)s",
-)
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -23,7 +22,11 @@ async def lifespan(app: FastAPI):
     logger.info("Loading ML model…")
     get_predictor()
     logger.info("Backend ready.")
-    yield
+    try:
+        yield
+    finally:
+        logger.info("Shutting down — disposing database engine.")
+        dispose_engine()
 
 
 app = FastAPI(
@@ -32,6 +35,9 @@ app = FastAPI(
     description="Cognitive Load Detection — REST API",
     lifespan=lifespan,
 )
+
+# ── Global exception handlers ────────────────────────────────────────────────
+register_exception_handlers(app)
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
 # Allow all localhost ports for local development.
@@ -50,6 +56,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Request validation / metadata middleware ─────────────────────────────────
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(MaxBodySizeMiddleware, max_bytes=MAX_BODY_SIZE)
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(auth.router)
