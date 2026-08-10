@@ -21,7 +21,7 @@ def _std(values: list) -> float:
 
 def calculate(state: BufferState, window_sec: float) -> dict:
     """
-    Returns a feature dict with all 16 ML features + metadata.
+    Returns a feature dict with all ML features + metadata.
     window_sec: duration of the collection window (usually 5.0)
     """
     keys  = state.key_events
@@ -66,6 +66,18 @@ def calculate(state: BufferState, window_sec: float) -> dict:
     speed_cv    = _std(speeds) / avg_speed if avg_speed > 0 else 1.0
     smoothness  = round(max(0.1, min(1.0, 1 - speed_cv)), 4)
 
+    # Phase 4: acceleration = change in speed between consecutive move samples
+    accel = []
+    for i in range(1, len(speeds)):
+        dt = (moves[i].timestamp - moves[i - 1].timestamp) / 1000.0
+        if dt > 0:
+            accel.append((speeds[i] - speeds[i - 1]) / dt)
+    avg_accel = round(_avg(accel), 2)
+
+    # Phase 4: hover-time (dwell) between mousedown and mouseup
+    hover_ms = [h.duration_ms for h in state.hovers]
+    avg_hover = round(_avg(hover_ms), 2)
+
     # ── Idle ─────────────────────────────────────────────────────────────────
     idle_pct = round(
         min(state.idle_total_ms / (window_sec * 1000), 0.95), 4
@@ -93,7 +105,8 @@ def calculate(state: BufferState, window_sec: float) -> dict:
         "double_click_rate":   dbl_rate,
         "scroll_rate":         scroll_rate,
         "idle_time_pct":       idle_pct,
-        "avg_hover_ms":        0,           # populated if hover tracking added
+        "avg_hover_ms":        avg_hover,     # Phase 4: dwell time
+        "avg_acceleration":    avg_accel,     # Phase 4: px/s²
         "movement_smoothness": smoothness,
         # label — filled in by main after optional self-report prompt
         "label": None,

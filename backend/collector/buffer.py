@@ -28,9 +28,17 @@ class MouseMoveEvent:
 
 
 @dataclass
+class MouseHoverEvent:
+    """Represents time spent hovering between mousedown and mouseup."""
+    duration_ms: float
+    timestamp: float
+
+
+@dataclass
 class BufferState:
     key_events:   list = field(default_factory=list)
     mouse_moves:  list = field(default_factory=list)
+    hovers:       list = field(default_factory=list)   # MouseHoverEvent
     clicks:       int  = 0
     double_clicks: int = 0
     scrolls:      int  = 0
@@ -68,6 +76,10 @@ class EventBuffer:
             self._state.scrolls += 1
             self._state.scroll_delta += abs(delta)
 
+    def add_hover(self, event: MouseHoverEvent):
+        with self._lock:
+            self._state.hovers.append(event)
+
     def mark_idle_start(self, ts: float):
         with self._lock:
             if self._state.idle_start is None:
@@ -95,3 +107,4 @@ class EventBuffer:
     def set_window_start(self, ts: float):
         with self._lock:
             self._state.window_start = ts
+

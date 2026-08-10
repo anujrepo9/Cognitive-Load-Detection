@@ -8,9 +8,12 @@ Run: python test_collector.py
 import os, sys, time, threading, csv, tempfile
 sys.path.insert(0, os.path.dirname(__file__))
 
-from buffer import EventBuffer, KeyEvent, MouseMoveEvent
+from buffer import EventBuffer, KeyEvent, MouseMoveEvent, MouseHoverEvent
 from metrics import calculate
 from csv_writer import CSVWriter
+from offline_queue import PushQueue
+from config import CollectorConfig, load_config, save_config
+import secure_store
 
 
 # ── Buffer tests ──────────────────────────────────────────────────────────────
@@ -130,6 +133,114 @@ def test_csv_write():
         print(f"  ✓ CSV write: 2 rows, headers correct")
 
 
+# ── Phase 4: hover + acceleration metrics ─────────────────────────────────────
+
+def test_metrics_hover_accel():
+    from buffer import BufferState
+    s = BufferState(window_start=time.time())
+    # Two hovers
+    s.hovers = [
+        MouseHoverEvent(duration_ms=250.0, timestamp=0),
+        MouseHoverEvent(duration_ms=350.0, timestamp=100),
+    ]
+    # Three moves with increasing speed → positive acceleration
+    s.mouse_moves = [
+        MouseMoveEvent(0, 0, speed_px_s=100.0, distance_px=10.0, timestamp=0),
+        MouseMoveEvent(10, 0, speed_px_s=200.0, distance_px=10.0, timestamp=1000),
+        MouseMoveEvent(20, 0, speed_px_s=300.0, distance_px=10.0, timestamp=2000),
+    ]
+    row = calculate(s, window_sec=5.0)
+    assert row["avg_hover_ms"] == 300.0, f"Expected 300, got {row['avg_hover_ms']}"
+    assert row["avg_acceleration"] > 0,  f"Expected >0 accel, got {row['avg_acceleration']}"
+    print(f"  ✓ hover={row['avg_hover_ms']}ms  accel={row['avg_acceleration']}px/s²")
+
+
+def test_metrics_hover_empty():
+    from buffer import BufferState
+    row = calculate(BufferState(), window_sec=5.0)
+    assert row["avg_hover_ms"] == 0.0
+    assert row["avg_acceleration"] == 0.0
+    print("  ✓ empty buffer → hover=0, accel=0")
+
+
+# ── Phase 4: offline queue ────────────────────────────────────────────────────
+
+def test_queue_push_pop():
+    with tempfile.TemporaryDirectory() as td:
+        q = PushQueue(os.path.join(td, "q.jsonl"))
+        q.push({"a": 1})
+        q.push({"b": 2})
+        assert q.pending_count() == 2
+        rows = q.pop_all()
+        assert len(rows) == 2
+        assert q.pending_count() == 0
+        print("  ✓ queue push/pop")
+
+
+def test_queue_retry_failed():
+    with tempfile.TemporaryDirectory() as td:
+        q = PushQueue(os.path.join(td, "q.jsonl"))
+        q.push({"a": 1})
+        fetched = q.pop_all()
+        assert len(fetched) == 1
+        q.retry_failed(fetched)  # simulate a failed send
+        assert q.pending_count() == 1
+        print("  ✓ queue retry_failed")
+
+
+def test_queue_persistence():
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "q.jsonl")
+        q = PushQueue(path)
+        q.push({"x": 5})
+        q.push({"y": 6})
+        # Re-open the same file (simulating a restart)
+        q2 = PushQueue(path)
+        assert q2.pending_count() == 2
+        print("  ✓ queue persists across restarts")
+
+
+# ── Phase 4: config ───────────────────────────────────────────────────────────
+
+def test_config_roundtrip():
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "cfg.json")
+        cfg = CollectorConfig(flush_interval=30, api_url="http://x:9000",
+                              offline_mode=True)
+        save_config(cfg, path)
+        loaded = load_config(path)
+        assert loaded.flush_interval == 30
+        assert loaded.api_url == "http://x:9000"
+        assert loaded.offline_mode is True
+        print("  ✓ config save/load roundtrip")
+
+
+def test_config_defaults():
+    cfg = CollectorConfig()
+    assert cfg.flush_interval == 15
+    assert cfg.behavior_url == "http://localhost:8000/behavior"
+    print("  ✓ config defaults")
+
+
+# ── Phase 4: secure store ─────────────────────────────────────────────────────
+
+def test_secure_store_roundtrip():
+    # Use a temp fallback file so we don't touch the real token store
+    from pathlib import Path as _P
+    import tempfile as _t
+    with _t.TemporaryDirectory() as td:
+        old = secure_store._FALLBACK_FILE
+        secure_store._FALLBACK_FILE = _P(td) / "tok"
+        try:
+            secure_store.save_token("secret.jwt.token")
+            assert secure_store.load_token() == "secret.jwt.token"
+            secure_store.delete_token()
+            assert secure_store.load_token() == ""
+        finally:
+            secure_store._FALLBACK_FILE = old
+    print("  ✓ secure store roundtrip")
+
+
 # ── Run all ───────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -140,6 +251,14 @@ if __name__ == "__main__":
         ("Metrics: keyboard",     test_metrics_keys),
         ("Metrics: mouse",        test_metrics_mouse),
         ("Metrics: empty buffer", test_metrics_empty),
+        ("Metrics: hover+accel",  test_metrics_hover_accel),
+        ("Metrics: hover empty",  test_metrics_hover_empty),
+        ("Queue: push/pop",       test_queue_push_pop),
+        ("Queue: retry_failed",   test_queue_retry_failed),
+        ("Queue: persistence",    test_queue_persistence),
+        ("Config: roundtrip",     test_config_roundtrip),
+        ("Config: defaults",      test_config_defaults),
+        ("Secure store",          test_secure_store_roundtrip),
         ("CSV writer",            test_csv_write),
     ]
     passed = failed = 0

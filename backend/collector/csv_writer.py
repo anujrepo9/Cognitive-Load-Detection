@@ -12,8 +12,8 @@ COLUMNS = [
     "typing_wpm", "chars_per_min", "avg_hold_ms", "avg_flight_ms",
     "error_rate", "pause_count", "avg_pause_ms", "typing_variance",
     "avg_cursor_speed", "movement_distance", "click_rate", "double_click_rate",
-    "scroll_rate", "idle_time_pct", "avg_hover_ms", "movement_smoothness",
-    "label",
+    "scroll_rate", "idle_time_pct", "avg_hover_ms", "avg_acceleration",
+    "movement_smoothness", "label",
 ]
 
 

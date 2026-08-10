@@ -1,3 +1,10 @@
 pynput>=1.7.6
 pandas>=2.0.0
 requests>=2.31.0
+# Phase 4 — secure token storage (Windows Credential Locker / DPAPI)
+keyring>=24.0.0
+# Phase 4 — optional system tray icon
+pystray>=0.19.5
+Pillow>=9.0.0
+# Phase 4 — Windows registry autostart + daemon (only installs on Windows)
+pywin32>=306; sys_platform == "win32"

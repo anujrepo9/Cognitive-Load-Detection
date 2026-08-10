@@ -1,0 +1,9 @@
+{
+    "api_token": "",
+    "api_url": "http://localhost:8000",
+    "daemon": false,
+    "flush_interval": 15,
+    "offline_mode": false,
+    "online_predict": false,
+    "start_on_login": true
+}
