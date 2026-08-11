@@ -11,7 +11,7 @@ import {
 } from "recharts"
 import { useAuth } from "../context/AuthContext"
 import { useBehaviorTracker } from "../hooks/useBehaviorTracker"
-import { behaviorAPI, dashboardAPI } from "../services/api"
+import { behaviorAPI, dashboardAPI, analyticsAPI } from "../services/api"
 import StatCard from "../components/ui/StatCard"
 import LoadBadge from "../components/ui/LoadBadge"
 import ProgressRing from "../components/ui/ProgressRing"
@@ -49,6 +49,7 @@ export default function Dashboard() {
   const [elapsed, setElapsed] = useState(0)
   const [predictions, setPredictions] = useState(0)
   const [running, setRunning] = useState(true)
+  const [modelInfo, setModelInfo] = useState(null)
   const startRef = useRef(Date.now())
 
   // Session timer
@@ -84,12 +85,17 @@ export default function Dashboard() {
     return () => clearInterval(poll)
   }, [runPrediction, running])
 
-  // Fetch dashboard summary
+  // Fetch dashboard summary + model info
   useEffect(() => {
-    dashboardAPI.overview()
-      .then(({ data }) => setStats(data))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    Promise.allSettled([
+      dashboardAPI.overview(),
+      fetch("/model/info", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+      }).then(r => r.json()),
+    ]).then(([statsRes, modelRes]) => {
+      if (statsRes.status === "fulfilled") setStats(statsRes.value.data)
+      if (modelRes.status === "fulfilled") setModelInfo(modelRes.value)
+    }).finally(() => setLoading(false))
   }, [])
 
   const counts = { low: 0, medium: 0, high: 0 }
@@ -375,10 +381,10 @@ export default function Dashboard() {
             </h3>
             <div className="space-y-3">
               {[
-                { icon: Keyboard, label: "Typing activity", value: stats?.typing_events ?? "—" },
+                { icon: Keyboard, label: "Typing activity", value: stats?.typing_events ?? predictions + " preds" },
                 { icon: MousePointerClick, label: "Mouse clicks", value: stats?.mouse_events ?? "—" },
                 { icon: Cpu, label: "Avg WPM", value: stats?.avg_wpm ?? "—" },
-                { icon: BrainCircuit, label: "Model version", value: stats?.model_version ?? "v1" },
+                { icon: BrainCircuit, label: "Model version", value: modelInfo ? `v${modelInfo.version}` : "rule-based" },
               ].map(({ icon: Icon, label, value }) => (
                 <div key={label} className="flex items-center justify-between py-2
                   border-b border-gray-50 dark:border-slate-800/50 last:border-0">

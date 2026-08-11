@@ -267,3 +267,17 @@ class HistoryResponsePaginated(BaseModel):
     page:        int
     per_page:    int
     total_pages: int
+
+
+# ── Model info ────────────────────────────────────────────────────────────────
+
+class ModelInfoResponse(BaseModel):
+    version:    str
+    type:       str
+    calibrated: Optional[bool]   = None
+    trained_at: Optional[str]    = None
+    accuracy:   Optional[float]  = None
+    cv_mean:    Optional[float]  = None
+    cv_std:     Optional[float]  = None
+    n_samples:  Optional[int]    = None
+    features:   list[str]
