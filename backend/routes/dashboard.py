@@ -1,15 +1,24 @@
+"""
+routes/dashboard.py — Dashboard + History endpoints.
+
+  GET /dashboard — overview stats
+  GET /history   — paginated session history with date filtering
+"""
+
+import math
 from datetime import datetime, timezone, timedelta
 from collections import Counter
 import json
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from database.db import get_db
 from database.models import User, Session as UserSession, BehaviorData, Prediction
 from auth.jwt import get_current_user
 from api.schemas import (
-    DashboardResponse, HistoryResponse, SessionOut
+    DashboardResponse, HistoryResponse, HistoryResponsePaginated, SessionOut
 )
 
 router = APIRouter(tags=["dashboard"])
@@ -26,6 +35,26 @@ FEATURE_IMPORTANCE = [
 ]
 
 
+def _session_out(s: UserSession) -> SessionOut:
+    preds      = s.predictions
+    label_dist = Counter(p.load_level for p in preds)
+    avg_load   = label_dist.most_common(1)[0][0] if label_dist else None
+
+    duration = None
+    if s.end_time and s.start_time:
+        secs     = int((s.end_time - s.start_time).total_seconds())
+        duration = f"{secs // 60}m {secs % 60}s"
+
+    return SessionOut(
+        session_id       = s.id,
+        start_time       = s.start_time,
+        end_time         = s.end_time,
+        duration         = duration,
+        avg_load         = avg_load,
+        prediction_count = len(preds),
+    )
+
+
 @router.get("/dashboard", response_model=DashboardResponse)
 def dashboard(
     db:   Session = Depends(get_db),
@@ -35,7 +64,6 @@ def dashboard(
         hour=0, minute=0, second=0, microsecond=0
     )
 
-    # Sessions today
     sessions_today = (
         db.query(UserSession)
         .filter(UserSession.user_id == user.id,
@@ -43,7 +71,6 @@ def dashboard(
         .count()
     )
 
-    # All predictions for this user
     all_preds = (
         db.query(Prediction)
         .join(UserSession)
@@ -56,17 +83,17 @@ def dashboard(
     label_dist = Counter(p.load_level for p in all_preds)
     avg_load   = label_dist.most_common(1)[0][0] if label_dist else "—"
 
-    # WPM trend — last 20 behavior records
+    # WPM trend — last 20 behavior records (use created_at, not timestamp)
     recent_behavior = (
         db.query(BehaviorData)
         .join(UserSession)
         .filter(UserSession.user_id == user.id)
-        .order_by(BehaviorData.timestamp.desc())
+        .order_by(BehaviorData.created_at.desc())
         .limit(20)
         .all()
     )
     wpm_trend = [
-        {"time": b.timestamp.strftime("%H:%M:%S"), "wpm": b.typing_wpm}
+        {"time": b.created_at.strftime("%H:%M:%S") if b.created_at else "", "wpm": b.typing_wpm}
         for b in reversed(recent_behavior)
     ]
 
@@ -80,38 +107,50 @@ def dashboard(
     )
 
 
-@router.get("/history", response_model=HistoryResponse)
+@router.get("/history", response_model=HistoryResponsePaginated)
 def history(
-    limit: int    = Query(20, ge=1, le=100),
-    db:    Session = Depends(get_db),
-    user:  User    = Depends(get_current_user),
+    page:     int            = Query(1,  ge=1),
+    per_page: int            = Query(10, ge=1, le=100),
+    from_date: Optional[str] = Query(None, description="ISO date e.g. 2025-01-01"),
+    to_date:   Optional[str] = Query(None, description="ISO date e.g. 2025-12-31"),
+    db:       Session        = Depends(get_db),
+    user:     User           = Depends(get_current_user),
 ):
-    sessions = (
+    query = (
         db.query(UserSession)
         .filter(UserSession.user_id == user.id)
+    )
+
+    if from_date:
+        try:
+            dt_from = datetime.fromisoformat(from_date).replace(tzinfo=timezone.utc)
+            query   = query.filter(UserSession.start_time >= dt_from)
+        except ValueError:
+            pass
+
+    if to_date:
+        try:
+            dt_to = datetime.fromisoformat(to_date).replace(
+                hour=23, minute=59, second=59, tzinfo=timezone.utc
+            )
+            query = query.filter(UserSession.start_time <= dt_to)
+        except ValueError:
+            pass
+
+    total       = query.count()
+    total_pages = max(1, math.ceil(total / per_page))
+    sessions    = (
+        query
         .order_by(UserSession.start_time.desc())
-        .limit(limit)
+        .offset((page - 1) * per_page)
+        .limit(per_page)
         .all()
     )
 
-    out = []
-    for s in sessions:
-        preds = s.predictions
-        label_dist = Counter(p.load_level for p in preds)
-        avg_load   = label_dist.most_common(1)[0][0] if label_dist else None
-
-        duration = None
-        if s.end_time and s.start_time:
-            secs = int((s.end_time - s.start_time).total_seconds())
-            duration = f"{secs // 60}m {secs % 60}s"
-
-        out.append(SessionOut(
-            session_id       = s.id,
-            start_time       = s.start_time,
-            end_time         = s.end_time,
-            duration         = duration,
-            avg_load         = avg_load,
-            prediction_count = len(preds),
-        ))
-
-    return HistoryResponse(sessions=out)
+    return HistoryResponsePaginated(
+        sessions    = [_session_out(s) for s in sessions],
+        total       = total,
+        page        = page,
+        per_page    = per_page,
+        total_pages = total_pages,
+    )

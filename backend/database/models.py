@@ -27,6 +27,8 @@ class User(Base):
                                cascade="all, delete-orphan")
     refresh_tokens = relationship("RefreshToken", back_populates="user",
                                   cascade="all, delete-orphan")
+    settings   = relationship("UserSettings", back_populates="user",
+                               uselist=False, cascade="all, delete-orphan")
 
 
 # ── Refresh Tokens ────────────────────────────────────────────────────────────
@@ -70,6 +72,7 @@ class BehaviorData(Base):
     id                  = Column(Integer, primary_key=True, index=True)
     session_id          = Column(Integer, ForeignKey("sessions.id"), nullable=False)
     timestamp           = Column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at          = Column(DateTime(timezone=True), default=utcnow, index=True)
 
     # Keyboard features
     typing_wpm          = Column(Integer,  default=0)
@@ -101,9 +104,27 @@ class Prediction(Base):
 
     id           = Column(Integer, primary_key=True, index=True)
     session_id   = Column(Integer, ForeignKey("sessions.id"), nullable=False)
+    behavior_id  = Column(Integer, ForeignKey("behavior_data.id"), nullable=True)  # linked behavior
     load_level   = Column(String(10), nullable=False)   # low | medium | high
     confidence   = Column(Float,      nullable=False)
     raw_scores   = Column(Text,       nullable=True)    # JSON string {low:.., medium:.., high:..}
     created_at   = Column(DateTime(timezone=True), default=utcnow, index=True)
 
-    session = relationship("Session", back_populates="predictions")
+    session  = relationship("Session", back_populates="predictions")
+    behavior = relationship("BehaviorData", foreign_keys=[behavior_id])
+
+
+# ── User Settings ─────────────────────────────────────────────────────────────
+
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+
+    id                   = Column(Integer, primary_key=True, index=True)
+    user_id              = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    tracking_enabled     = Column(Boolean, default=True)
+    flush_interval_sec   = Column(Integer, default=5)
+    notifications_enabled= Column(Boolean, default=True)
+    theme                = Column(String(20), default="system")   # light | dark | system
+    updated_at           = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user = relationship("User", back_populates="settings")

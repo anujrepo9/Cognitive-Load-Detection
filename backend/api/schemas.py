@@ -150,3 +150,120 @@ class Recommendation(BaseModel):
 class RecommendationResponse(BaseModel):
     load_level:      str
     recommendations: list[Recommendation]
+
+
+# ── Session lifecycle ─────────────────────────────────────────────────────────
+
+class CurrentSessionResponse(BaseModel):
+    session_id:        int
+    start_time:        Optional[datetime]
+    duration_seconds:  int
+    prediction_count:  int
+    latest_load:       Optional[str]
+    latest_confidence: Optional[float]
+
+
+class EndSessionResponse(BaseModel):
+    session_id: int
+    end_time:   datetime
+    duration:   str
+
+
+# ── Reports ───────────────────────────────────────────────────────────────────
+
+class DailyReportEntry(BaseModel):
+    date:             str         # YYYY-MM-DD
+    sessions:         int
+    predictions:      int
+    avg_wpm:          float
+    dominant_load:    Optional[str]
+    load_distribution: dict
+
+
+class DailyReportResponse(BaseModel):
+    days: list[DailyReportEntry]
+
+
+class WeeklyReportEntry(BaseModel):
+    week_start:       str         # YYYY-MM-DD (Monday)
+    sessions:         int
+    predictions:      int
+    avg_wpm:          float
+    dominant_load:    Optional[str]
+    load_distribution: dict
+
+
+class WeeklyReportResponse(BaseModel):
+    weeks: list[WeeklyReportEntry]
+
+
+# ── Analytics ─────────────────────────────────────────────────────────────────
+
+class TrendPoint(BaseModel):
+    timestamp:  str
+    load_level: str
+    confidence: float
+    wpm:        Optional[int] = None
+
+
+class AnalyticsTrendsResponse(BaseModel):
+    points:    list[TrendPoint]
+    total:     int
+    from_time: Optional[str]
+    to_time:   Optional[str]
+
+
+class FeatureStatEntry(BaseModel):
+    feature: str
+    mean:    float
+    std:     float
+    min:     float
+    max:     float
+
+
+class AnalyticsFeaturesResponse(BaseModel):
+    stats:    list[FeatureStatEntry]
+    per_load: dict   # {low: {feature: mean}, medium: ..., high: ...}
+    total_records: int
+
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+class SettingsResponse(BaseModel):
+    tracking_enabled:      bool
+    flush_interval_sec:    int
+    notifications_enabled: bool
+    theme:                 str
+
+    model_config = {"from_attributes": True}
+
+
+class SettingsUpdateRequest(BaseModel):
+    tracking_enabled:      Optional[bool] = None
+    flush_interval_sec:    Optional[int]  = None
+    notifications_enabled: Optional[bool] = None
+    theme:                 Optional[str]  = None
+
+    @field_validator("flush_interval_sec")
+    @classmethod
+    def interval_range(cls, v):
+        if v is not None and not (1 <= v <= 300):
+            raise ValueError("flush_interval_sec must be between 1 and 300")
+        return v
+
+    @field_validator("theme")
+    @classmethod
+    def valid_theme(cls, v):
+        if v is not None and v not in ("light", "dark", "system"):
+            raise ValueError("theme must be light, dark, or system")
+        return v
+
+
+# ── History (extended) ────────────────────────────────────────────────────────
+
+class HistoryResponsePaginated(BaseModel):
+    sessions:    list[SessionOut]
+    total:       int
+    page:        int
+    per_page:    int
+    total_pages: int

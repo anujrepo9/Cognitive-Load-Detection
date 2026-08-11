@@ -1,31 +1,120 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
-  FileText, Download, Calendar, TrendingUp, Activity, BrainCircuit,
-  MousePointerClick, Keyboard, Clock,
+  FileText, Download, Calendar, TrendingUp, Activity,
+  Loader2, AlertCircle,
 } from "lucide-react"
 import { useAuth } from "../context/AuthContext"
-import ChartCard from "../components/ui/ChartCard"
+import { reportsAPI } from "../services/api"
 import ProgressRing from "../components/ui/ProgressRing"
 
-const reports = [
-  {
-    id: 1, title: "Daily cognitive load summary", date: "Feb 18, 2025",
-    avg: 42, total: "3h 24m", highlights: "Highest focus at 10 AM",
-  },
-  {
-    id: 2, title: "Weekly focus analysis", date: "Week 7", avg: 55,
-    total: "18h 45m", highlights: "Productive growth of 12%",
-  },
-  {
-    id: 3, title: "Typing efficiency report", date: "Feb 17, 2025",
-    avg: 68, total: "2h 10m", highlights: "Avg 52 WPM",
-  },
-]
+const LOAD_COLOR = { low: "text-green-500", medium: "text-yellow-500", high: "text-red-500" }
+
+function LoadBadge({ level }) {
+  const color = { low: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+                  medium: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+                  high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" }
+  return (
+    <span className={`px-2 py-0.5 rounded-md text-xs font-semibold capitalize ${color[level] || color.medium}`}>
+      {level || "—"}
+    </span>
+  )
+}
+
+function DailyTab({ days }) {
+  if (!days.length) return (
+    <p className="text-sm text-gray-400 text-center py-8">No data yet for this period.</p>
+  )
+  return (
+    <div className="space-y-3">
+      {days.map((d) => (
+        <div key={d.date} className="card p-4 flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2 min-w-[110px]">
+            <Calendar className="w-4 h-4 text-gray-400" />
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{d.date}</span>
+          </div>
+          <div className="flex gap-4 flex-1 flex-wrap text-sm text-gray-500 dark:text-gray-400">
+            <span><strong className="text-gray-800 dark:text-gray-200">{d.sessions}</strong> sessions</span>
+            <span><strong className="text-gray-800 dark:text-gray-200">{d.predictions}</strong> predictions</span>
+            <span><strong className="text-gray-800 dark:text-gray-200">{d.avg_wpm}</strong> avg WPM</span>
+          </div>
+          {d.dominant_load && <LoadBadge level={d.dominant_load} />}
+          <div className="flex gap-2 text-xs">
+            {Object.entries(d.load_distribution).map(([k, v]) => (
+              <span key={k} className="text-gray-400">{k}: {(v * 100).toFixed(0)}%</span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function WeeklyTab({ weeks }) {
+  if (!weeks.length) return (
+    <p className="text-sm text-gray-400 text-center py-8">No data yet for this period.</p>
+  )
+  return (
+    <div className="space-y-3">
+      {weeks.map((w) => (
+        <div key={w.week_start} className="card p-4 flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2 min-w-[130px]">
+            <Calendar className="w-4 h-4 text-gray-400" />
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Week of {w.week_start}
+            </span>
+          </div>
+          <div className="flex gap-4 flex-1 flex-wrap text-sm text-gray-500 dark:text-gray-400">
+            <span><strong className="text-gray-800 dark:text-gray-200">{w.sessions}</strong> sessions</span>
+            <span><strong className="text-gray-800 dark:text-gray-200">{w.predictions}</strong> predictions</span>
+            <span><strong className="text-gray-800 dark:text-gray-200">{w.avg_wpm}</strong> avg WPM</span>
+          </div>
+          {w.dominant_load && <LoadBadge level={w.dominant_load} />}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function Reports() {
   const { user } = useAuth()
-  const [active, setActive] = useState(reports[0])
+  const [tab,    setTab]    = useState("daily")
+  const [daily,  setDaily]  = useState([])
+  const [weekly, setWeekly] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
+  const [exporting, setExporting] = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    Promise.all([
+      reportsAPI.daily(14),
+      reportsAPI.weekly(8),
+    ])
+      .then(([d, w]) => {
+        setDaily(d.data.days)
+        setWeekly(w.data.weeks)
+      })
+      .catch(() => setError("Could not load reports"))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const res = await reportsAPI.export()
+      const url = URL.createObjectURL(new Blob([res.data]))
+      const a   = document.createElement("a")
+      a.href    = url
+      a.download = `cogniload_export_${new Date().toISOString().slice(0,10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError("Export failed")
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
@@ -37,113 +126,43 @@ export default function Reports() {
             Detailed summaries of your cognitive performance
           </p>
         </div>
-        <button className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl
-          bg-primary text-white text-sm font-semibold hover:bg-primary-dark
-          shadow-lg shadow-primary/20 transition-colors">
-          <Download className="w-4 h-4" /> Export report
+        <button onClick={handleExport} disabled={exporting}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl
+            bg-primary text-white text-sm font-semibold hover:bg-primary-dark
+            shadow-lg shadow-primary/20 transition-colors disabled:opacity-60">
+          {exporting
+            ? <Loader2 className="w-4 h-4 animate-spin" />
+            : <Download className="w-4 h-4" />}
+          {exporting ? "Exporting…" : "Export CSV"}
         </button>
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Reports list */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white px-1">
-            Available reports
-          </h3>
-          {reports.map((r) => (
-            <motion.button key={r.id}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              onClick={() => setActive(r)}
-              className={`w-full text-left p-4 rounded-xl border transition-all
-                ${active.id === r.id
-                  ? "border-primary/50 bg-primary/5 shadow-glow-primary"
-                  : "border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-primary/30"}`}>
-              <div className="flex items-center gap-3 mb-2">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center
-                  ${active.id === r.id
-                    ? "bg-primary/10 text-primary"
-                    : "bg-gray-100 dark:bg-slate-800 text-gray-400"}`}>
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{r.title}</p>
-                  <p className="text-xs text-gray-400 flex items-center gap-1">
-                    <Calendar className="w-3 h-3" /> {r.date}
-                  </p>
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{r.highlights}</p>
-            </motion.button>
-          ))}
+      {error && (
+        <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200
+          dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400 flex gap-2 items-center">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
         </div>
+      )}
 
-        {/* Report preview */}
-        <motion.div
-          key={active.id}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="lg:col-span-2 card p-6"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">{active.title}</h2>
-              <p className="text-sm text-gray-400">Generated for {user?.name || "you"} · {active.date}</p>
-            </div>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
-              bg-primary/10 text-primary text-xs font-semibold">
-              <TrendingUp className="w-3.5 h-3.5" /> {active.avg}% avg workload
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            {[
-              { icon: Activity, label: "Avg load", value: `${active.avg}%` },
-              { icon: Clock, label: "Total time", value: active.total },
-              { icon: Keyboard, label: "Avg WPM", value: "52" },
-              { icon: MousePointerClick, label: "Clicks/day", value: "1.2k" },
-            ].map(({ icon: Icon, label, value }) => (
-              <div key={label} className="rounded-xl border border-gray-100 dark:border-slate-800
-                p-4 text-center">
-                <Icon className="w-5 h-5 text-primary mx-auto mb-2" />
-                <p className="text-lg font-bold text-gray-900 dark:text-white">{value}</p>
-                <p className="text-xs text-gray-400">{label}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex flex-col md:flex-row items-center gap-6">
-            <div className="flex flex-col items-center">
-              <ProgressRing value={active.avg} size={120}
-                color="#2563EB" label={`${active.avg}%`} sublabel="Workload" />
-              <BrainCircuit className="w-5 h-5 text-primary mt-3" />
-            </div>
-            <div className="flex-1 space-y-3">
-              {[
-                { label: "Focus efficiency", value: 78, color: "#10B981" },
-                { label: "Fatigue risk", value: 32, color: "#F59E0B" },
-                { label: "Stress level", value: 45, color: "#EF4444" },
-              ].map(({ label, value, color }) => (
-                <div key={label}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-500 dark:text-gray-400">{label}</span>
-                    <span className="font-medium text-gray-900 dark:text-white">{value}%</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden">
-                    <motion.div initial={{ width: 0 }} animate={{ width: `${value}%` }}
-                      transition={{ duration: 0.8 }} className="h-full rounded-full"
-                      style={{ background: color }} />
-                  </div>
-                </div>
-              ))}
-              <p className="text-xs text-gray-400 bg-gray-50 dark:bg-slate-800/50
-                rounded-lg px-3 py-2.5">
-                💡 {active.highlights}
-              </p>
-            </div>
-          </div>
-        </motion.div>
+      {/* Tabs */}
+      <div className="flex gap-2">
+        {["daily", "weekly"].map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-5 py-2 rounded-xl text-sm font-semibold capitalize transition-all
+              ${tab === t
+                ? "bg-primary text-white shadow-glow-primary"
+                : "bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700"}`}>
+            {t}
+          </button>
+        ))}
       </div>
+
+      {loading
+        ? <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+        : tab === "daily"
+          ? <DailyTab  days={daily} />
+          : <WeeklyTab weeks={weekly} />
+      }
     </div>
   )
 }
