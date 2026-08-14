@@ -1,20 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
 import {
   Radio, Cpu, Keyboard, MousePointerClick, Timer, Zap,
+  Wifi, WifiOff, RotateCcw,
 } from "lucide-react"
 import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from "recharts"
 import { useBehaviorTracker } from "../hooks/useBehaviorTracker"
-import { behaviorAPI } from "../services/api"
+import { useWebSocket } from "../hooks/useWebSocket"
 import StatCard from "../components/ui/StatCard"
 import LoadBadge from "../components/ui/LoadBadge"
-
-const POLL_MS = 5000
-
-const LOAD_COLORS = { low: "#10B981", medium: "#F59E0B", high: "#EF4444" }
 
 function formatDuration(seconds) {
   const m = Math.floor(seconds / 60)
@@ -22,39 +19,54 @@ function formatDuration(seconds) {
   return `${m}m ${s.toString().padStart(2, "0")}s`
 }
 
+const STATUS_UI = {
+  connected:    { icon: Wifi,      color: "text-success",  label: "Live",         bg: "bg-success/10"  },
+  connecting:   { icon: Wifi,      color: "text-warning",  label: "Connecting…",  bg: "bg-warning/10"  },
+  reconnecting: { icon: RotateCcw, color: "text-warning",  label: "Reconnecting", bg: "bg-warning/10"  },
+  offline:      { icon: WifiOff,   color: "text-danger",   label: "Offline",      bg: "bg-danger/10"   },
+}
+
 export default function LiveMonitoring() {
-  const { extractFeatures } = useBehaviorTracker(true)
-  const [history, setHistory] = useState([])
+  // Behavior tracker still runs so the flush loop sends data to /predict via
+  // HTTP, which in turn broadcasts predictions over the WebSocket.
+  useBehaviorTracker(true)
+
+  const { status, connected, prediction } = useWebSocket(true)
+
+  const [history, setHistory]       = useState([])
   const [wpmHistory, setWpmHistory] = useState([])
-  const [loadLevel, setLoadLevel] = useState("unknown")
+  const [loadLevel, setLoadLevel]   = useState("unknown")
   const [confidence, setConfidence] = useState(0)
   const [lastUpdated, setLastUpdated] = useState(null)
-  const [elapsed, setElapsed] = useState(0)
+  const [elapsed, setElapsed]       = useState(0)
+  const [mouseEvents, setMouseEvents] = useState(0)
   const startRef = useRef(Date.now())
 
+  // Session timer
   useEffect(() => {
-    const tick = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000)
+    const tick = setInterval(
+      () => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)),
+      1000,
+    )
     return () => clearInterval(tick)
   }, [])
 
-  const poll = useCallback(async () => {
-    const features = extractFeatures()
-    if (!features) return
-    try {
-      const { data } = await behaviorAPI.predict(features)
-      setLoadLevel(data.load_level)
-      setConfidence(Math.round(data.confidence * 100))
-      setLastUpdated(new Date())
-      const time = new Date().toLocaleTimeString()
-      setHistory((prev) => [...prev.slice(-29), { time, score: data.confidence * 100 }])
-      setWpmHistory((prev) => [...prev.slice(-29), { time, wpm: features.wpm || 0 }])
-    } catch { /* graceful */ }
-  }, [extractFeatures])
-
+  // React to WebSocket prediction pushes
   useEffect(() => {
-    const i = setInterval(poll, POLL_MS)
-    return () => clearInterval(i)
-  }, [poll])
+    if (!prediction) return
+    const { load_level, confidence: conf } = prediction
+    const time = new Date().toLocaleTimeString()
+
+    setLoadLevel(load_level)
+    setConfidence(Math.round(conf * 100))
+    setLastUpdated(new Date())
+    setHistory((prev) => [...prev.slice(-29), { time, score: Math.round(conf * 100) }])
+    setWpmHistory((prev) => [...prev.slice(-29), { time, wpm: prediction.typing_wpm ?? 0 }])
+    setMouseEvents((n) => n + 3)
+  }, [prediction])
+
+  const wsUI = STATUS_UI[status] || STATUS_UI.offline
+  const WsIcon = wsUI.icon
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
@@ -67,6 +79,13 @@ export default function LiveMonitoring() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Connection status indicator */}
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
+            ${wsUI.bg} ${wsUI.color} text-xs font-semibold`}>
+            <WsIcon className={`w-3.5 h-3.5 ${status === "reconnecting" ? "animate-spin" : ""}`} />
+            {wsUI.label}
+          </span>
+
           {lastUpdated && (
             <span className="text-xs text-gray-400">
               Last update: {lastUpdated.toLocaleTimeString()}
@@ -86,11 +105,26 @@ export default function LiveMonitoring() {
           accent="primary" sub="Model confidence score" />
         <StatCard label="Session time" value={formatDuration(elapsed)}
           icon={Timer} accent="accent" sub="Time tracked" />
-        <StatCard label="Typing WPM" value={wpmHistory.length ? wpmHistory[wpmHistory.length - 1].wpm : "—"}
+        <StatCard label="Typing WPM"
+          value={wpmHistory.length ? wpmHistory[wpmHistory.length - 1].wpm : "—"}
           icon={Keyboard} accent="success" sub="Live words per minute" />
-        <StatCard label="Mouse events" value={history.length * 3}
+        <StatCard label="Mouse events" value={mouseEvents}
           icon={MousePointerClick} accent="warning" sub="Clicks & movement" />
       </div>
+
+      {/* WS offline banner */}
+      {!connected && status !== "connecting" && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3
+            flex items-center gap-3 text-sm text-warning">
+          <WifiOff className="w-4 h-4 shrink-0" />
+          <span>
+            {status === "reconnecting"
+              ? "WebSocket disconnected — attempting to reconnect…"
+              : "WebSocket offline — live updates unavailable. Predictions still stored via HTTP."}
+          </span>
+        </motion.div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Confidence live chart */}
@@ -103,7 +137,7 @@ export default function LiveMonitoring() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Confidence stream</h3>
-                <p className="text-xs text-gray-400">Live prediction confidence</p>
+                <p className="text-xs text-gray-400">Live prediction confidence (WebSocket push)</p>
               </div>
             </div>
           </div>

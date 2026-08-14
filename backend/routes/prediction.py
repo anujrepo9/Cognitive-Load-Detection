@@ -1,5 +1,6 @@
 import json
-from fastapi import APIRouter, Depends
+import asyncio
+from fastapi import APIRouter, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from database.db import get_db
@@ -12,9 +13,20 @@ from routes.behavior import _get_or_create_active_session
 router = APIRouter(tags=["prediction"])
 
 
+async def _broadcast_prediction(user_id: int, payload: dict) -> None:
+    """Push prediction to all WebSocket subscribers for this user (best-effort)."""
+    try:
+        # Import here to avoid circular imports at module load time
+        from routes.ws import manager
+        await manager.send_to_user(user_id, {"type": "prediction", **payload})
+    except Exception:
+        pass  # WebSocket broadcast is fire-and-forget — never fail the HTTP response
+
+
 @router.post("/predict", response_model=PredictionResponse)
-def predict(
+async def predict(
     payload: BehaviorPayload,
+    background_tasks: BackgroundTasks,
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
 ):
@@ -53,6 +65,16 @@ def predict(
     )
     db.add(record)
     db.commit()
+
+    ws_payload = {
+        "load_level": result["load_level"],
+        "confidence": result["confidence"],
+        "scores":     result["scores"],
+        "session_id": session.id,
+    }
+
+    # Broadcast to WebSocket clients — background so HTTP response isn't delayed
+    background_tasks.add_task(_broadcast_prediction, user.id, ws_payload)
 
     return PredictionResponse(
         load_level = result["load_level"],

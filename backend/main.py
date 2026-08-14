@@ -12,6 +12,7 @@ from services.predictor import get_predictor
 from routes import auth, behavior, prediction, dashboard, recommendation, session, reports, analytics
 from routes import settings as settings_route
 from routes import model as model_route
+from routes import ws as ws_route
 
 setup_logging()
 logger = get_logger(__name__)
@@ -74,6 +75,7 @@ app.include_router(reports.router)
 app.include_router(analytics.router)
 app.include_router(settings_route.router)
 app.include_router(model_route.router)
+app.include_router(ws_route.router)
 
 
 @app.get("/health", tags=["meta"])

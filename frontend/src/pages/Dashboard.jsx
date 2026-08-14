@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import {
   Activity, Zap, Target, Calendar, BarChart3, Play, Pause, RotateCcw,
   BrainCircuit, TrendingUp, Clock, Cpu, MousePointerClick, Keyboard,
-  Sparkles,
+  Sparkles, Wifi, WifiOff,
 } from "lucide-react"
 import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -11,17 +11,17 @@ import {
 } from "recharts"
 import { useAuth } from "../context/AuthContext"
 import { useBehaviorTracker } from "../hooks/useBehaviorTracker"
-import { behaviorAPI, dashboardAPI, analyticsAPI } from "../services/api"
+import { useWebSocket } from "../hooks/useWebSocket"
+import { dashboardAPI } from "../services/api"
 import StatCard from "../components/ui/StatCard"
 import LoadBadge from "../components/ui/LoadBadge"
 import ProgressRing from "../components/ui/ProgressRing"
 import EmptyState from "../components/ui/EmptyState"
 import { SkeletonPage } from "../components/ui/Skeleton"
 
-const POLL_MS = 6000
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000"
 
-const loadColors = { low: "#10B981", medium: "#F59E0B", high: "#EF4444" }
-
+const loadColors  = { low: "#10B981", medium: "#F59E0B", high: "#EF4444" }
 const loadDetails = {
   low:    { label: "Low",    color: "#10B981", desc: "Comfortable focus pace" },
   medium: { label: "Medium", color: "#F59E0B", desc: "Steady but engaged" },
@@ -38,60 +38,51 @@ function formatDuration(seconds) {
 
 export default function Dashboard() {
   const { user } = useAuth()
-  const { extractFeatures } = useBehaviorTracker(true)
+  // Behavior tracker drives the flush loop → POST /predict → WS broadcast
+  useBehaviorTracker(true)
+  const { status: wsStatus, prediction } = useWebSocket(true)
 
-  const [loadLevel, setLoadLevel] = useState("unknown")
-  const [confidence, setConfidence] = useState(null)
-  const [history, setHistory] = useState([])
-  const [stats, setStats] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [lastUpdated, setLastUpdated] = useState(null)
-  const [elapsed, setElapsed] = useState(0)
-  const [predictions, setPredictions] = useState(0)
-  const [running, setRunning] = useState(true)
-  const [modelInfo, setModelInfo] = useState(null)
+  const [loadLevel,    setLoadLevel]    = useState("unknown")
+  const [confidence,   setConfidence]   = useState(null)
+  const [history,      setHistory]      = useState([])
+  const [stats,        setStats]        = useState(null)
+  const [loading,      setLoading]      = useState(true)
+  const [lastUpdated,  setLastUpdated]  = useState(null)
+  const [elapsed,      setElapsed]      = useState(0)
+  const [predictions,  setPredictions]  = useState(0)
+  const [modelInfo,    setModelInfo]    = useState(null)
   const startRef = useRef(Date.now())
 
   // Session timer
   useEffect(() => {
-    const tick = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
-    }, 1000)
+    const tick = setInterval(
+      () => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)),
+      1000,
+    )
     return () => clearInterval(tick)
   }, [])
 
-  const runPrediction = useCallback(async () => {
-    if (!running) return
-    const features = extractFeatures()
-    if (!features) return
-    try {
-      const { data } = await behaviorAPI.predict(features)
-      setLoadLevel(data.load_level)
-      setConfidence(data.confidence)
-      setLastUpdated(new Date())
-      setPredictions((p) => p + 1)
-      setHistory((prev) => [
-        ...prev.slice(-29),
-        { time: new Date().toLocaleTimeString(), level: data.load_level,
-          score: data.confidence * 100 },
-      ])
-    } catch { /* backend not up yet — graceful */ }
-  }, [extractFeatures, running])
-
-  // Poll for live prediction
+  // React to WebSocket prediction pushes
   useEffect(() => {
-    if (!running) return
-    const poll = setInterval(runPrediction, POLL_MS)
-    return () => clearInterval(poll)
-  }, [runPrediction, running])
+    if (!prediction) return
+    const { load_level, confidence: conf } = prediction
+    setLoadLevel(load_level)
+    setConfidence(conf)
+    setLastUpdated(new Date())
+    setPredictions((p) => p + 1)
+    setHistory((prev) => [
+      ...prev.slice(-29),
+      { time: new Date().toLocaleTimeString(), level: load_level, score: Math.round(conf * 100) },
+    ])
+  }, [prediction])
 
-  // Fetch dashboard summary + model info
+  // Fetch dashboard summary + model info once on mount
   useEffect(() => {
     Promise.allSettled([
       dashboardAPI.overview(),
-      fetch("/model/info", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      }).then(r => r.json()),
+      fetch(`${API_BASE}/model/info`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      }).then((r) => r.json()),
     ]).then(([statsRes, modelRes]) => {
       if (statsRes.status === "fulfilled") setStats(statsRes.value.data)
       if (modelRes.status === "fulfilled") setModelInfo(modelRes.value)
@@ -105,6 +96,8 @@ export default function Dashboard() {
 
   if (loading) return <SkeletonPage />
 
+  const wsConnected = wsStatus === "connected"
+
   return (
     <div className="p-4 lg:p-6 space-y-6">
       {/* ===== Hero / Header ===== */}
@@ -113,7 +106,6 @@ export default function Dashboard() {
         animate={{ opacity: 1, y: 0 }}
         className="card p-5 lg:p-6 relative overflow-hidden"
       >
-        {/* Decorative gradient blob */}
         <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full
           bg-primary/10 dark:bg-primary/20 blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-16 w-64 h-64 rounded-full
@@ -125,14 +117,24 @@ export default function Dashboard() {
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                 Welcome back, {user?.name?.split(" ")[0] || "there"} 👋
               </h1>
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1
-                rounded-full bg-success/10 text-success text-xs font-semibold">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full
-                    rounded-full bg-success opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
-                </span>
-                Live
+              {/* Live / WS status badge */}
+              <span className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1
+                rounded-full text-xs font-semibold transition-colors
+                ${wsConnected
+                  ? "bg-success/10 text-success"
+                  : "bg-warning/10 text-warning"}`}>
+                {wsConnected ? (
+                  <>
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full
+                        rounded-full bg-success opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
+                    </span>
+                    Live
+                  </>
+                ) : (
+                  <><WifiOff className="w-3 h-3" /> {wsStatus}</>
+                )}
               </span>
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -141,15 +143,8 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2">
-            <button onClick={() => setRunning(!running)}
-              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl
-                text-sm font-semibold transition-all duration-200
-                ${running
-                  ? "bg-warning/10 text-warning hover:bg-warning/20 border border-warning/30"
-                  : "bg-success text-white hover:bg-success-dark shadow-lg shadow-success/20"}`}>
-              {running ? <><Pause className="w-4 h-4" /> Pause</> : <><Play className="w-4 h-4" /> Resume</>}
-            </button>
-            <button onClick={() => { setHistory([]); setPredictions(0); startRef.current = Date.now() }}
+            <button
+              onClick={() => { setHistory([]); setPredictions(0); startRef.current = Date.now() }}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm
                 font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-slate-800
                 hover:bg-gray-200 dark:hover:bg-slate-700 border border-gray-200
@@ -164,23 +159,19 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Current load" value={loadLevel.charAt(0).toUpperCase() + loadLevel.slice(1)}
-          icon={Zap} accent="primary" delay={0}
-          sub="Updated live"
+          icon={Zap} accent="primary" delay={0} sub="Updated via WebSocket"
         />
         <StatCard
           label="Confidence" value={currentConf} unit="%"
-          icon={Target} accent="accent" delay={0.05}
-          sub="Prediction confidence"
+          icon={Target} accent="accent" delay={0.05} sub="Prediction confidence"
         />
         <StatCard
           label="Sessions today" value={stats?.sessions_today ?? 0}
-          icon={Calendar} accent="success" delay={0.1}
-          sub="Completed sessions"
+          icon={Calendar} accent="success" delay={0.1} sub="Completed sessions"
         />
         <StatCard
           label="Avg load today" value={stats?.avg_load ?? "—"}
-          icon={BarChart3} accent="warning" delay={0.15}
-          sub="Daily average"
+          icon={BarChart3} accent="warning" delay={0.15} sub="Daily average"
         />
       </div>
 
@@ -205,7 +196,7 @@ export default function Dashboard() {
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
                     Confidence over time
                   </h3>
-                  <p className="text-xs text-gray-400">Real-time prediction score</p>
+                  <p className="text-xs text-gray-400">Real-time WebSocket push</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -221,7 +212,7 @@ export default function Dashboard() {
               <EmptyState
                 icon={Activity}
                 title="No live data yet"
-                description="Start typing or moving the mouse to see your real-time cognitive load prediction."
+                description="Start typing or moving the mouse to generate predictions."
               />
             ) : (
               <ResponsiveContainer width="100%" height={260}>
@@ -251,25 +242,23 @@ export default function Dashboard() {
             )}
           </motion.div>
 
-          {/* Activity timeline */}
+          {/* Load distribution */}
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.2 }}
             className="card p-5"
           >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-accent/10 dark:bg-accent/20
-                  flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-accent" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                    Load distribution
-                  </h3>
-                  <p className="text-xs text-gray-400">This session</p>
-                </div>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-accent/10 dark:bg-accent/20
+                flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-accent" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Load distribution
+                </h3>
+                <p className="text-xs text-gray-400">This session</p>
               </div>
             </div>
 
@@ -282,18 +271,13 @@ export default function Dashboard() {
                   const pct = Math.round((value / history.length) * 100)
                   return (
                     <div key={level}
-                      className="rounded-xl border border-gray-100 dark:border-slate-800
-                        p-3 text-center">
+                      className="rounded-xl border border-gray-100 dark:border-slate-800 p-3 text-center">
                       <div className="flex items-center justify-center gap-1.5 mb-1">
                         <span className="w-2 h-2 rounded-full"
                           style={{ background: loadColors[level] }} />
-                        <span className="text-xs font-medium text-gray-500 capitalize">
-                          {level}
-                        </span>
+                        <span className="text-xs font-medium text-gray-500 capitalize">{level}</span>
                       </div>
-                      <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                        {pct}%
-                      </p>
+                      <p className="text-2xl font-bold text-gray-900 dark:text-white">{pct}%</p>
                       <p className="text-[10px] text-gray-400">{value} readings</p>
                       <div className="mt-2 h-1.5 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden">
                         <motion.div
@@ -322,9 +306,7 @@ export default function Dashboard() {
           >
             <div className="flex items-center justify-center gap-2 mb-4">
               <BrainCircuit className="w-5 h-5 text-primary" />
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                AI Status
-              </h3>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">AI Status</h3>
             </div>
 
             <div className="flex justify-center mb-4">
@@ -343,8 +325,7 @@ export default function Dashboard() {
               {loadDetails[loadLevel]?.desc || "Waiting for data…"}
             </p>
 
-            <div className="grid grid-cols-3 gap-2 pt-4 border-t border-gray-100
-              dark:border-slate-800">
+            <div className="grid grid-cols-3 gap-2 pt-4 border-t border-gray-100 dark:border-slate-800">
               <div>
                 <Clock className="w-4 h-4 text-primary mx-auto mb-1" />
                 <p className="text-xs font-semibold text-gray-900 dark:text-white">
@@ -354,22 +335,22 @@ export default function Dashboard() {
               </div>
               <div>
                 <Activity className="w-4 h-4 text-accent mx-auto mb-1" />
-                <p className="text-xs font-semibold text-gray-900 dark:text-white">
-                  {predictions}
-                </p>
+                <p className="text-xs font-semibold text-gray-900 dark:text-white">{predictions}</p>
                 <p className="text-[10px] text-gray-400">Predictions</p>
               </div>
               <div>
                 <Sparkles className="w-4 h-4 text-warning mx-auto mb-1" />
                 <p className="text-xs font-semibold text-gray-900 dark:text-white">
-                  {lastUpdated ? lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+                  {lastUpdated
+                    ? lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    : "—"}
                 </p>
                 <p className="text-[10px] text-gray-400">Last update</p>
               </div>
             </div>
           </motion.div>
 
-          {/* Session metrics card */}
+          {/* Session metrics */}
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -381,10 +362,10 @@ export default function Dashboard() {
             </h3>
             <div className="space-y-3">
               {[
-                { icon: Keyboard, label: "Typing activity", value: stats?.typing_events ?? predictions + " preds" },
-                { icon: MousePointerClick, label: "Mouse clicks", value: stats?.mouse_events ?? "—" },
-                { icon: Cpu, label: "Avg WPM", value: stats?.avg_wpm ?? "—" },
-                { icon: BrainCircuit, label: "Model version", value: modelInfo ? `v${modelInfo.version}` : "rule-based" },
+                { icon: Keyboard,          label: "Typing events",  value: stats?.typing_events  ?? predictions + " preds" },
+                { icon: MousePointerClick, label: "Mouse clicks",   value: stats?.mouse_events   ?? "—" },
+                { icon: Cpu,              label: "Avg WPM",        value: stats?.avg_wpm        ?? "—" },
+                { icon: BrainCircuit,     label: "Model version",  value: modelInfo?.version ? `v${modelInfo.version}` : "rule-based" },
               ].map(({ icon: Icon, label, value }) => (
                 <div key={label} className="flex items-center justify-between py-2
                   border-b border-gray-50 dark:border-slate-800/50 last:border-0">
@@ -395,9 +376,7 @@ export default function Dashboard() {
                     </div>
                     <span className="text-sm text-gray-500 dark:text-gray-400">{label}</span>
                   </div>
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                    {value}
-                  </span>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">{value}</span>
                 </div>
               ))}
             </div>
