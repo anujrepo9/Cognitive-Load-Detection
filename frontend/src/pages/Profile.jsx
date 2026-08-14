@@ -46,7 +46,7 @@ export default function Profile() {
     setPwdErr(null)
     setPwdMsg(null)
     try {
-      await authAPI.changePassword({ old_password: oldPwd, new_password: newPwd })
+      await authAPI.changePassword({ current_password: oldPwd, new_password: newPwd })
       setPwdMsg("Password changed successfully.")
       setOldPwd("")
       setNewPwd("")

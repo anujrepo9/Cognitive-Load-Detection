@@ -15,6 +15,7 @@ Usage:
 
 import logging
 import os
+import json
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -30,6 +31,21 @@ LOG_FORMAT       = os.getenv(
 )
 
 _CONFIGURED = False
+
+
+class JsonFormatter(logging.Formatter):
+    """Render structured log records when ``LOG_FORMAT=json`` is requested."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
 
 
 def _ensure_log_dir(path: str) -> Path:
@@ -65,7 +81,11 @@ def setup_logging(level: str | None = None) -> None:
     # Avoid duplicate handlers if called again in tests.
     root.handlers.clear()
 
-    formatter = logging.Formatter(LOG_FORMAT)
+    formatter = (
+        JsonFormatter()
+        if LOG_FORMAT.strip().lower() == "json"
+        else logging.Formatter(LOG_FORMAT)
+    )
 
     # ── Console handler ─────────────────────────────────────────────────────
     console = logging.StreamHandler()
@@ -100,4 +120,3 @@ def get_logger(name: str | None = None) -> logging.Logger:
     """
     setup_logging()
     return logging.getLogger(name)
-

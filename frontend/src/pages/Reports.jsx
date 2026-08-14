@@ -1,14 +1,10 @@
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
-  FileText, Download, Calendar, TrendingUp, Activity,
+  Download, Calendar,
   Loader2, AlertCircle,
 } from "lucide-react"
-import { useAuth } from "../context/AuthContext"
 import { reportsAPI } from "../services/api"
-import ProgressRing from "../components/ui/ProgressRing"
-
-const LOAD_COLOR = { low: "text-green-500", medium: "text-yellow-500", high: "text-red-500" }
 
 function LoadBadge({ level }) {
   const color = { low: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
@@ -77,7 +73,6 @@ function WeeklyTab({ weeks }) {
 }
 
 export default function Reports() {
-  const { user } = useAuth()
   const [tab,    setTab]    = useState("daily")
   const [daily,  setDaily]  = useState([])
   const [weekly, setWeekly] = useState([])

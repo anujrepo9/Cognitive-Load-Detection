@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef, useCallback, useState } from "react"
 import { behaviorAPI, settingsAPI } from "../services/api"
 
 const DEFAULT_FLUSH_MS = 5000
@@ -11,18 +11,34 @@ export function useBehaviorTracker(enabled = true) {
     sessionStart: Date.now(),
   })
 
-  // Configurable flush interval — loaded from backend settings once on mount
-  const flushIntervalMs = useRef(DEFAULT_FLUSH_MS)
+  const [settings, setSettings] = useState({
+    loaded: false,
+    trackingEnabled: true,
+    flushIntervalMs: DEFAULT_FLUSH_MS,
+  })
+
+  // Load the user's tracking preferences before attaching global listeners.
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) {
+      setSettings((current) => ({ ...current, loaded: true, trackingEnabled: false }))
+      return
+    }
+
     settingsAPI.get()
       .then(({ data }) => {
-        if (data?.flush_interval_sec) {
-          flushIntervalMs.current = data.flush_interval_sec * 1000
-        }
+        setSettings({
+          loaded: true,
+          trackingEnabled: data?.tracking_enabled !== false,
+          flushIntervalMs: (data?.flush_interval_sec || DEFAULT_FLUSH_MS) * 1000,
+        })
       })
-      .catch(() => { /* use default */ })
+      .catch(() => {
+        // The tracker cannot submit predictions without the backend, so leave it disabled.
+        setSettings((current) => ({ ...current, loaded: true, trackingEnabled: false }))
+      })
   }, [enabled])
+
+  const trackerEnabled = enabled && settings.loaded && settings.trackingEnabled
 
   const lastKey   = useRef({ key: null, downTime: null })
   const lastMouse = useRef({ x: 0, y: 0, time: Date.now() })
@@ -163,19 +179,13 @@ export function useBehaviorTracker(enabled = true) {
   // ── Dynamic interval — re-creates when flushIntervalMs changes ───────────
   const intervalRef = useRef(null)
   useEffect(() => {
-    if (!enabled) return
-    const start = () => {
-      clearInterval(intervalRef.current)
-      intervalRef.current = setInterval(flush, flushIntervalMs.current)
-    }
-    start()
-    // Poll every 5 s to pick up setting changes without a full remount
-    const poll = setInterval(start, 5000)
-    return () => { clearInterval(intervalRef.current); clearInterval(poll) }
-  }, [enabled, flush])
+    if (!trackerEnabled) return
+    intervalRef.current = setInterval(flush, settings.flushIntervalMs)
+    return () => clearInterval(intervalRef.current)
+  }, [trackerEnabled, settings.flushIntervalMs, flush])
 
   useEffect(() => {
-    if (!enabled) return
+    if (!trackerEnabled) return
     window.addEventListener("keydown",  onKeyDown)
     window.addEventListener("keyup",    onKeyUp)
     window.addEventListener("mousemove", onMouseMove)
@@ -189,7 +199,7 @@ export function useBehaviorTracker(enabled = true) {
       window.removeEventListener("wheel",    onWheel)
       clearTimeout(idleTimer.current)
     }
-  }, [enabled, onKeyDown, onKeyUp, onMouseMove, onMouseDown, onWheel])
+  }, [trackerEnabled, onKeyDown, onKeyUp, onMouseMove, onMouseDown, onWheel])
 
   return { extractFeatures }
 }

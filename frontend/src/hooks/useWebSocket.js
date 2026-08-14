@@ -78,8 +78,9 @@ export function useWebSocket(enabled = true) {
           case "ping":
             resetHeartbeatTimer()
             // Reply with pong
-            ws.readyState === WebSocket.OPEN &&
+            if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: "pong" }))
+            }
             break
 
           case "prediction":
@@ -88,6 +89,7 @@ export function useWebSocket(enabled = true) {
               confidence: msg.confidence,
               scores:     msg.scores,
               session_id: msg.session_id,
+              typing_wpm: msg.typing_wpm,
             })
             break
 

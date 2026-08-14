@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom"
 import { AuthProvider, useAuth } from "./context/AuthContext"
+import { TrackingProvider } from "./context/TrackingContext"
 import Sidebar from "./components/layout/Sidebar"
 import TopNav from "./components/layout/TopNav"
 import Landing from "./pages/Landing"
@@ -13,6 +14,7 @@ import Reports from "./pages/Reports"
 import Recommendations from "./pages/Recommendations"
 import Settings from "./pages/Settings"
 import Profile from "./pages/Profile"
+import TrackingConsentDialog from "./components/tracking/TrackingConsentDialog"
 
 function ProtectedLayout() {
   const { isAuth } = useAuth()
@@ -25,6 +27,7 @@ function ProtectedLayout() {
         <main className="flex-1 overflow-y-auto">
           <Outlet />
         </main>
+        <TrackingConsentDialog />
       </div>
     </div>
   )
@@ -39,6 +42,7 @@ function GuestLayout() {
 export default function App() {
   return (
     <AuthProvider>
+      <TrackingProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
@@ -59,6 +63,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </TrackingProvider>
     </AuthProvider>
   )
 }

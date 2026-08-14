@@ -71,6 +71,7 @@ async def predict(
         "confidence": result["confidence"],
         "scores":     result["scores"],
         "session_id": session.id,
+        "typing_wpm":  payload.typing_wpm,
     }
 
     # Broadcast to WebSocket clients — background so HTTP response isn't delayed

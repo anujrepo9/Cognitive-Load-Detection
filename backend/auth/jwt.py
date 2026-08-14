@@ -91,7 +91,12 @@ def validate_refresh_token(raw: str, db: Session) -> User:
     if not record or record.revoked:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    if datetime.now(timezone.utc) > record.expires_at:
+    expires_at = record.expires_at
+    if expires_at.tzinfo is None:
+        # SQLite does not preserve timezone offsets for DateTime columns.
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if datetime.now(timezone.utc) > expires_at:
         # Mark expired token as revoked to keep the table clean
         record.revoked = True
         record.revoked_at = datetime.now(timezone.utc)

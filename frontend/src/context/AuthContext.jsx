@@ -21,7 +21,7 @@ export function AuthProvider({ children }) {
     if (refreshToken) {
       try {
         await authAPI.logout({ refresh_token: refreshToken })
-      } catch (_) {
+      } catch {
         // ignore network/revoke errors — clear locally regardless
       }
     }
@@ -39,4 +39,3 @@ export function AuthProvider({ children }) {
 }
 
 export const useAuth = () => useContext(AuthContext)
-

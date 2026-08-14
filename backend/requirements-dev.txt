@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=8.0.0
+# Required by Starlette 1.x's FastAPI TestClient.
+httpx2>=0.1.0

@@ -2,8 +2,10 @@ import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Save, Bell, Shield, Cpu, Loader2 } from "lucide-react"
 import { settingsAPI } from "../services/api"
+import { useTheme } from "../context/ThemeContext"
 
 export default function Settings() {
+  const { setTheme: setAppTheme } = useTheme()
   const [tracking,      setTracking]      = useState(true)
   const [interval,      setInterval_]     = useState(5)
   const [notifications, setNotifications] = useState(true)
@@ -21,6 +23,7 @@ export default function Settings() {
         setInterval_(data.flush_interval_sec)
         setNotifications(data.notifications_enabled)
         setTheme(data.theme)
+        setAppTheme(data.theme)
       })
       .catch(() => setError("Could not load settings"))
       .finally(() => setLoading(false))
@@ -36,6 +39,7 @@ export default function Settings() {
         notifications_enabled: notifications,
         theme,
       })
+      setAppTheme(theme)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch {

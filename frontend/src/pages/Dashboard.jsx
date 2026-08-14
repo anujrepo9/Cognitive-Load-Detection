@@ -1,25 +1,24 @@
-import { useState, useEffect, useRef, useCallback } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { useState, useEffect } from "react"
+import { motion } from "framer-motion"
 import {
-  Activity, Zap, Target, Calendar, BarChart3, Play, Pause, RotateCcw,
+  Activity, Zap, Target, Calendar, BarChart3, RotateCcw,
   BrainCircuit, TrendingUp, Clock, Cpu, MousePointerClick, Keyboard,
-  Sparkles, Wifi, WifiOff,
+  Sparkles, WifiOff,
 } from "lucide-react"
 import {
-  LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip,
+  AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from "recharts"
 import { useAuth } from "../context/AuthContext"
-import { useBehaviorTracker } from "../hooks/useBehaviorTracker"
-import { useWebSocket } from "../hooks/useWebSocket"
-import { dashboardAPI } from "../services/api"
+import { useTracking } from "../context/TrackingContext"
+import { dashboardAPI, modelAPI } from "../services/api"
 import StatCard from "../components/ui/StatCard"
 import LoadBadge from "../components/ui/LoadBadge"
 import ProgressRing from "../components/ui/ProgressRing"
 import EmptyState from "../components/ui/EmptyState"
 import { SkeletonPage } from "../components/ui/Skeleton"
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000"
+import TrackingControls from "../components/tracking/TrackingControls"
+import TrackingStatus from "../components/tracking/TrackingStatus"
 
 const loadColors  = { low: "#10B981", medium: "#F59E0B", high: "#EF4444" }
 const loadDetails = {
@@ -39,8 +38,7 @@ function formatDuration(seconds) {
 export default function Dashboard() {
   const { user } = useAuth()
   // Behavior tracker drives the flush loop → POST /predict → WS broadcast
-  useBehaviorTracker(true)
-  const { status: wsStatus, prediction } = useWebSocket(true)
+  const { prediction, websocketStatus: wsStatus, session, trackingState } = useTracking()
 
   const [loadLevel,    setLoadLevel]    = useState("unknown")
   const [confidence,   setConfidence]   = useState(null)
@@ -51,16 +49,15 @@ export default function Dashboard() {
   const [elapsed,      setElapsed]      = useState(0)
   const [predictions,  setPredictions]  = useState(0)
   const [modelInfo,    setModelInfo]    = useState(null)
-  const startRef = useRef(Date.now())
 
   // Session timer
   useEffect(() => {
     const tick = setInterval(
-      () => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)),
+      () => setElapsed(session?.start_time ? Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 1000)) : 0),
       1000,
     )
     return () => clearInterval(tick)
-  }, [])
+  }, [session?.session_id, session?.start_time, trackingState])
 
   // React to WebSocket prediction pushes
   useEffect(() => {
@@ -80,12 +77,10 @@ export default function Dashboard() {
   useEffect(() => {
     Promise.allSettled([
       dashboardAPI.overview(),
-      fetch(`${API_BASE}/model/info`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      }).then((r) => r.json()),
+      modelAPI.info(),
     ]).then(([statsRes, modelRes]) => {
       if (statsRes.status === "fulfilled") setStats(statsRes.value.data)
-      if (modelRes.status === "fulfilled") setModelInfo(modelRes.value)
+      if (modelRes.status === "fulfilled") setModelInfo(modelRes.value.data)
     }).finally(() => setLoading(false))
   }, [])
 
@@ -144,16 +139,19 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => { setHistory([]); setPredictions(0); startRef.current = Date.now() }}
+              onClick={() => { setHistory([]); setPredictions(0) }}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm
                 font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-slate-800
                 hover:bg-gray-200 dark:hover:bg-slate-700 border border-gray-200
                 dark:border-slate-700 transition-colors">
               <RotateCcw className="w-4 h-4" /> Reset
             </button>
+            <TrackingControls />
           </div>
         </div>
       </motion.div>
+
+      <TrackingStatus />
 
       {/* ===== Stat Cards ===== */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

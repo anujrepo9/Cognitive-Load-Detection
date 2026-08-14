@@ -17,44 +17,62 @@ from api.schemas import CurrentSessionResponse, EndSessionResponse
 router = APIRouter(prefix="/session", tags=["session"])
 
 
-@router.get("/current", response_model=CurrentSessionResponse)
-def current_session(
-    db:   Session = Depends(get_db),
-    user: User    = Depends(get_current_user),
-):
-    """Return the user's currently active session and latest prediction."""
-    sess = (
+def _active_session(db: Session, user_id: int) -> UserSession | None:
+    return (
         db.query(UserSession)
-        .filter(UserSession.user_id == user.id, UserSession.end_time.is_(None))
+        .filter(UserSession.user_id == user_id, UserSession.end_time.is_(None))
         .order_by(UserSession.start_time.desc())
         .first()
     )
-    if not sess:
-        raise HTTPException(status_code=404, detail="No active session")
 
+
+def _session_response(db: Session, sess: UserSession) -> CurrentSessionResponse:
     now = datetime.now(timezone.utc)
     start = sess.start_time
-    # Ensure both are tz-aware for subtraction
     if start.tzinfo is None:
-        from datetime import timezone as tz
-        start = start.replace(tzinfo=tz.utc)
-    duration_sec = int((now - start).total_seconds())
-
+        start = start.replace(tzinfo=timezone.utc)
     latest_pred = (
         db.query(Prediction)
         .filter(Prediction.session_id == sess.id)
         .order_by(Prediction.created_at.desc())
         .first()
     )
-
     return CurrentSessionResponse(
-        session_id        = sess.id,
-        start_time        = sess.start_time,
-        duration_seconds  = duration_sec,
-        prediction_count  = len(sess.predictions),
-        latest_load       = latest_pred.load_level if latest_pred else None,
-        latest_confidence = latest_pred.confidence  if latest_pred else None,
+        session_id=sess.id,
+        start_time=sess.start_time,
+        duration_seconds=int((now - start).total_seconds()),
+        prediction_count=len(sess.predictions),
+        latest_load=latest_pred.load_level if latest_pred else None,
+        latest_confidence=latest_pred.confidence if latest_pred else None,
     )
+
+
+@router.post("/start", response_model=CurrentSessionResponse)
+def start_session(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Create an active session, or return the one already in progress."""
+    sess = _active_session(db, user.id)
+    if not sess:
+        sess = UserSession(user_id=user.id)
+        db.add(sess)
+        db.commit()
+        db.refresh(sess)
+    return _session_response(db, sess)
+
+
+@router.get("/current", response_model=CurrentSessionResponse)
+def current_session(
+    db:   Session = Depends(get_db),
+    user: User    = Depends(get_current_user),
+):
+    """Return the user's currently active session and latest prediction."""
+    sess = _active_session(db, user.id)
+    if not sess:
+        raise HTTPException(status_code=404, detail="No active session")
+
+    return _session_response(db, sess)
 
 
 @router.post("/end", response_model=EndSessionResponse)
@@ -63,12 +81,7 @@ def end_session(
     user: User    = Depends(get_current_user),
 ):
     """Close the user's active session by setting end_time."""
-    sess = (
-        db.query(UserSession)
-        .filter(UserSession.user_id == user.id, UserSession.end_time.is_(None))
-        .order_by(UserSession.start_time.desc())
-        .first()
-    )
+    sess = _active_session(db, user.id)
     if not sess:
         raise HTTPException(status_code=404, detail="No active session to end")
 

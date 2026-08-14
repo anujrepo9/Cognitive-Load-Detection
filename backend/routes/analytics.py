@@ -39,7 +39,7 @@ def trends(
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
 
     session_ids = [
-        s.id for s in
+        row[0] for row in
         db.query(UserSession.id)
           .filter(UserSession.user_id == user.id)
           .all()
@@ -93,7 +93,7 @@ def features(
 ):
     """Return per-feature distribution stats, overall and split by load level."""
     session_ids = [
-        s.id for s in
+        row[0] for row in
         db.query(UserSession.id)
           .filter(UserSession.user_id == user.id)
           .all()

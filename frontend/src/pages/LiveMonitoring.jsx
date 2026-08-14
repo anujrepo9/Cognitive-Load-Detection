@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
   Radio, Cpu, Keyboard, MousePointerClick, Timer, Zap,
@@ -8,10 +8,11 @@ import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from "recharts"
-import { useBehaviorTracker } from "../hooks/useBehaviorTracker"
-import { useWebSocket } from "../hooks/useWebSocket"
+import { useTracking } from "../context/TrackingContext"
 import StatCard from "../components/ui/StatCard"
 import LoadBadge from "../components/ui/LoadBadge"
+import TrackingControls from "../components/tracking/TrackingControls"
+import TrackingStatus from "../components/tracking/TrackingStatus"
 
 function formatDuration(seconds) {
   const m = Math.floor(seconds / 60)
@@ -29,9 +30,8 @@ const STATUS_UI = {
 export default function LiveMonitoring() {
   // Behavior tracker still runs so the flush loop sends data to /predict via
   // HTTP, which in turn broadcasts predictions over the WebSocket.
-  useBehaviorTracker(true)
-
-  const { status, connected, prediction } = useWebSocket(true)
+  const { websocketStatus: status, prediction, session, trackingState } = useTracking()
+  const connected = status === "connected"
 
   const [history, setHistory]       = useState([])
   const [wpmHistory, setWpmHistory] = useState([])
@@ -40,16 +40,15 @@ export default function LiveMonitoring() {
   const [lastUpdated, setLastUpdated] = useState(null)
   const [elapsed, setElapsed]       = useState(0)
   const [mouseEvents, setMouseEvents] = useState(0)
-  const startRef = useRef(Date.now())
 
   // Session timer
   useEffect(() => {
     const tick = setInterval(
-      () => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)),
+      () => setElapsed(session?.start_time ? Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 1000)) : 0),
       1000,
     )
     return () => clearInterval(tick)
-  }, [])
+  }, [session?.session_id, session?.start_time, trackingState])
 
   // React to WebSocket prediction pushes
   useEffect(() => {
@@ -91,13 +90,12 @@ export default function LiveMonitoring() {
               Last update: {lastUpdated.toLocaleTimeString()}
             </span>
           )}
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
-            bg-danger/10 text-danger text-xs font-semibold">
-            <Radio className="w-3.5 h-3.5 animate-pulse" /> REC
-          </span>
+          <TrackingControls />
           <LoadBadge level={loadLevel} />
         </div>
       </motion.div>
+
+      <TrackingStatus />
 
       {/* Metric cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

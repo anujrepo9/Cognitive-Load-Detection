@@ -16,7 +16,7 @@ const notifications = [
 ]
 
 export default function TopNav() {
-  const { theme, toggleTheme } = useTheme()
+  const { resolvedTheme, toggleTheme } = useTheme()
   const { user } = useAuth()
   const [time, setTime] = useState(new Date())
   const [notifOpen, setNotifOpen] = useState(false)
@@ -75,7 +75,7 @@ export default function TopNav() {
             dark:text-gray-400 dark:hover:text-white
             bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700
             transition-colors" aria-label="Toggle theme">
-          {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          {resolvedTheme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>
 
         {/* Notifications */}

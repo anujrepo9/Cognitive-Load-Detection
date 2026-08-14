@@ -96,6 +96,10 @@ class KeyboardListener:
 
     @staticmethod
     def _key_to_str(key) -> str:
+        # Normalize the space key to a plain space character so that
+        # metrics.py can count words via `k.key == " "` correctly.
+        if key == kb.Key.space:
+            return " "
         try:
             return key.char or str(key)
         except AttributeError:
