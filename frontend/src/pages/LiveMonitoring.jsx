@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
-  Radio, Cpu, Keyboard, MousePointerClick, Timer, Zap,
+  Cpu, Keyboard, MousePointerClick, Timer, Zap,
   Wifi, WifiOff, RotateCcw,
 } from "lucide-react"
 import {
@@ -9,10 +9,12 @@ import {
   ResponsiveContainer, CartesianGrid,
 } from "recharts"
 import { useTracking } from "../context/TrackingContext"
+import { PageHeader } from "../components/ui/PageHeader"
 import StatCard from "../components/ui/StatCard"
 import LoadBadge from "../components/ui/LoadBadge"
 import TrackingControls from "../components/tracking/TrackingControls"
 import TrackingStatus from "../components/tracking/TrackingStatus"
+import EmptyState from "../components/ui/EmptyState"
 
 function formatDuration(seconds) {
   const m = Math.floor(seconds / 60)
@@ -21,32 +23,36 @@ function formatDuration(seconds) {
 }
 
 const STATUS_UI = {
-  connected:    { icon: Wifi,      color: "text-success",  label: "Live",         bg: "bg-success/10"  },
-  connecting:   { icon: Wifi,      color: "text-warning",  label: "Connecting…",  bg: "bg-warning/10"  },
-  reconnecting: { icon: RotateCcw, color: "text-warning",  label: "Reconnecting", bg: "bg-warning/10"  },
-  offline:      { icon: WifiOff,   color: "text-danger",   label: "Offline",      bg: "bg-danger/10"   },
+  connected:    { icon: Wifi,      color: "text-success", label: "Live",          bg: "bg-success/10" },
+  connecting:   { icon: Wifi,      color: "text-warning", label: "Connecting…",   bg: "bg-warning/10" },
+  reconnecting: { icon: RotateCcw, color: "text-warning", label: "Reconnecting",  bg: "bg-warning/10" },
+  offline:      { icon: WifiOff,   color: "text-danger",  label: "Offline",       bg: "bg-danger/10"  },
+}
+
+const tooltipStyle = {
+  background: "#fff", border: "1px solid #E2E8F0",
+  borderRadius: 12, fontSize: 12, color: "#0F172A",
 }
 
 export default function LiveMonitoring() {
-  // Behavior tracker still runs so the flush loop sends data to /predict via
-  // HTTP, which in turn broadcasts predictions over the WebSocket.
   const { websocketStatus: status, prediction, session, trackingState } = useTracking()
   const connected = status === "connected"
 
-  const [history, setHistory]       = useState([])
-  const [wpmHistory, setWpmHistory] = useState([])
-  const [loadLevel, setLoadLevel]   = useState("unknown")
-  const [confidence, setConfidence] = useState(0)
+  const [history,     setHistory]     = useState([])
+  const [wpmHistory,  setWpmHistory]  = useState([])
+  const [loadLevel,   setLoadLevel]   = useState("unknown")
+  const [confidence,  setConfidence]  = useState(0)
   const [lastUpdated, setLastUpdated] = useState(null)
-  const [elapsed, setElapsed]       = useState(0)
+  const [elapsed,     setElapsed]     = useState(0)
   const [mouseEvents, setMouseEvents] = useState(0)
 
   // Session timer
   useEffect(() => {
-    const tick = setInterval(
-      () => setElapsed(session?.start_time ? Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 1000)) : 0),
-      1000,
-    )
+    const tick = setInterval(() => {
+      setElapsed(session?.start_time
+        ? Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 1000))
+        : 0)
+    }, 1000)
     return () => clearInterval(tick)
   }, [session?.session_id, session?.start_time, trackingState])
 
@@ -55,7 +61,6 @@ export default function LiveMonitoring() {
     if (!prediction) return
     const { load_level, confidence: conf } = prediction
     const time = new Date().toLocaleTimeString()
-
     setLoadLevel(load_level)
     setConfidence(Math.round(conf * 100))
     setLastUpdated(new Date())
@@ -64,123 +69,137 @@ export default function LiveMonitoring() {
     setMouseEvents((n) => n + 3)
   }, [prediction])
 
-  const wsUI = STATUS_UI[status] || STATUS_UI.offline
+  const wsUI  = STATUS_UI[status] || STATUS_UI.offline
   const WsIcon = wsUI.icon
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-        className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Live Monitoring</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Real-time biometric and behavioral signals
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Connection status indicator */}
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
-            ${wsUI.bg} ${wsUI.color} text-xs font-semibold`}>
-            <WsIcon className={`w-3.5 h-3.5 ${status === "reconnecting" ? "animate-spin" : ""}`} />
-            {wsUI.label}
+      <PageHeader
+        title="Live Monitoring"
+        subtitle="Real-time behavioral signals — data flows via WebSocket after each prediction"
+      >
+        {/* WebSocket status badge */}
+        <span
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
+            ${wsUI.bg} ${wsUI.color} text-xs font-semibold`}
+          role="status"
+          aria-live="polite"
+          aria-label={`Connection: ${wsUI.label}`}
+        >
+          <WsIcon className={`w-3.5 h-3.5 ${status === "reconnecting" ? "animate-spin" : ""}`}
+            aria-hidden="true" />
+          {wsUI.label}
+        </span>
+        {lastUpdated && (
+          <span className="text-xs text-gray-400">
+            Last update: {lastUpdated.toLocaleTimeString()}
           </span>
-
-          {lastUpdated && (
-            <span className="text-xs text-gray-400">
-              Last update: {lastUpdated.toLocaleTimeString()}
-            </span>
-          )}
-          <TrackingControls />
-          <LoadBadge level={loadLevel} />
-        </div>
-      </motion.div>
+        )}
+        <TrackingControls />
+        <LoadBadge level={loadLevel} />
+      </PageHeader>
 
       <TrackingStatus />
 
-      {/* Metric cards */}
+      {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Confidence" value={confidence} unit="%" icon={Zap}
-          accent="primary" sub="Model confidence score" />
-        <StatCard label="Session time" value={formatDuration(elapsed)}
-          icon={Timer} accent="accent" sub="Time tracked" />
+        <StatCard label="Confidence"   value={confidence}    unit="%" icon={Zap}
+          accent="primary"  sub="Model prediction confidence" />
+        <StatCard label="Session time" value={formatDuration(elapsed)} icon={Timer}
+          accent="accent"   sub="Time since tracking started" />
         <StatCard label="Typing WPM"
           value={wpmHistory.length ? wpmHistory[wpmHistory.length - 1].wpm : "—"}
           icon={Keyboard} accent="success" sub="Live words per minute" />
-        <StatCard label="Mouse events" value={mouseEvents}
-          icon={MousePointerClick} accent="warning" sub="Clicks & movement" />
+        <StatCard label="Mouse events" value={mouseEvents} icon={MousePointerClick}
+          accent="warning"  sub="Approximate click and move count" />
       </div>
 
-      {/* WS offline banner */}
+      {/* Offline banner */}
       {!connected && status !== "connecting" && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          role="alert"
           className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3
             flex items-center gap-3 text-sm text-warning">
-          <WifiOff className="w-4 h-4 shrink-0" />
+          <WifiOff className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span>
             {status === "reconnecting"
-              ? "WebSocket disconnected — attempting to reconnect…"
-              : "WebSocket offline — live updates unavailable. Predictions still stored via HTTP."}
+              ? "WebSocket disconnected — attempting to reconnect automatically…"
+              : "WebSocket offline — live charts will be empty, but predictions are still saved via HTTP."}
           </span>
         </motion.div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Confidence live chart */}
+        {/* Confidence chart */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }} className="card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-                <Cpu className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Confidence stream</h3>
-                <p className="text-xs text-gray-400">Live prediction confidence (WebSocket push)</p>
-              </div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Cpu className="w-5 h-5 text-primary" aria-hidden="true" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Confidence stream
+              </h3>
+              <p className="text-xs text-gray-400">
+                Pushed live via WebSocket after each flush interval
+              </p>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={history}>
-              <defs>
-                <linearGradient id="liveGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2563EB" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#2563EB" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.12)" vertical={false} />
-              <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: "#fff", border: "1px solid #E2E8F0",
-                borderRadius: 12, fontSize: 12, color: "#0F172A" }} />
-              <Area type="monotone" dataKey="score" stroke="#2563EB" strokeWidth={2} fill="url(#liveGrad)" />
-            </AreaChart>
-          </ResponsiveContainer>
+          {history.length < 2
+            ? <EmptyState icon={Cpu} title="No data yet"
+                description="Start tracking and interact with your device to see the confidence stream." />
+            : (
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={history} aria-label="Confidence over time chart">
+                  <defs>
+                    <linearGradient id="liveGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"   stopColor="#2563EB" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#2563EB" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.12)" vertical={false} />
+                  <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false}
+                    tickFormatter={(v) => `${v}%`} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v}%`, "Confidence"]} />
+                  <Area type="monotone" dataKey="score" stroke="#2563EB" strokeWidth={2}
+                    fill="url(#liveGrad)" name="Confidence" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
         </motion.div>
 
         {/* WPM chart */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }} className="card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-success/10 flex items-center justify-center">
-                <Keyboard className="w-5 h-5 text-success" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Typing speed</h3>
-                <p className="text-xs text-gray-400">Words per minute</p>
-              </div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-xl bg-success/10 flex items-center justify-center">
+              <Keyboard className="w-5 h-5 text-success" aria-hidden="true" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Typing speed</h3>
+              <p className="text-xs text-gray-400">
+                Words per minute computed from space-separated word counts
+              </p>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={wpmHistory}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.12)" vertical={false} />
-              <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: "#fff", border: "1px solid #E2E8F0",
-                borderRadius: 12, fontSize: 12, color: "#0F172A" }} />
-              <Line type="monotone" dataKey="wpm" stroke="#10B981" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+          {wpmHistory.filter((p) => p.wpm > 0).length < 2
+            ? <EmptyState icon={Keyboard} title="No typing data"
+                description="Type continuously during a session to see your WPM trend." />
+            : (
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={wpmHistory} aria-label="Words per minute over time chart">
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.12)" vertical={false} />
+                  <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false}
+                    tickFormatter={(v) => `${v} wpm`} />
+                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} wpm`, "Typing speed"]} />
+                  <Line type="monotone" dataKey="wpm" stroke="#10B981" strokeWidth={2}
+                    dot={false} name="WPM" />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
         </motion.div>
       </div>
     </div>

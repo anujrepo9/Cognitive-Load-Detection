@@ -13,7 +13,7 @@ api.interceptors.request.use((config) => {
 
 // ── Response: auto-refresh on 401, retry once ─────────────────────────────────
 let _refreshing = false
-let _waitQueue  = []  // { resolve, reject }[]
+let _waitQueue  = []
 
 function _processQueue(error, token = null) {
   _waitQueue.forEach(({ resolve, reject }) => error ? reject(error) : resolve(token))
@@ -25,30 +25,22 @@ api.interceptors.response.use(
   async (err) => {
     const original = err.config
 
-    // Only handle 401 once per request; skip refresh & logout endpoints
     if (
       err.response?.status !== 401 ||
       original._retried ||
       original.url?.includes("/auth/refresh") ||
       original.url?.includes("/auth/logout")
     ) {
-      // Hard logout if we get a 401 on the refresh call itself
-      if (original.url?.includes("/auth/refresh")) {
-        _clearSession()
-      }
+      if (original.url?.includes("/auth/refresh")) _clearSession()
       return Promise.reject(err)
     }
 
     original._retried = true
 
     const refreshToken = localStorage.getItem("refreshToken")
-    if (!refreshToken) {
-      _clearSession()
-      return Promise.reject(err)
-    }
+    if (!refreshToken) { _clearSession(); return Promise.reject(err) }
 
     if (_refreshing) {
-      // Another request already started a refresh — wait for it
       return new Promise((resolve, reject) => {
         _waitQueue.push({ resolve, reject })
       }).then((newToken) => {
@@ -59,20 +51,12 @@ api.interceptors.response.use(
 
     _refreshing = true
     try {
-      const { data } = await axios.post(`${BASE}/auth/refresh`, {
-        refresh_token: refreshToken,
-      })
+      const { data } = await axios.post(`${BASE}/auth/refresh`, { refresh_token: refreshToken })
       const newAccess  = data.access_token
       const newRefresh = data.refresh_token ?? refreshToken
-
       localStorage.setItem("token",        newAccess)
       localStorage.setItem("refreshToken", newRefresh)
-
-      // Patch stored user if returned
-      if (data.user) {
-        localStorage.setItem("user", JSON.stringify(data.user))
-      }
-
+      if (data.user) localStorage.setItem("user", JSON.stringify(data.user))
       api.defaults.headers.common.Authorization = `Bearer ${newAccess}`
       _processQueue(null, newAccess)
       original.headers.Authorization = `Bearer ${newAccess}`
@@ -92,6 +76,16 @@ function _clearSession() {
   localStorage.removeItem("refreshToken")
   localStorage.removeItem("user")
   window.location.href = "/login"
+}
+
+// ── Centralised error helper ──────────────────────────────────────────────────
+// Returns a user-readable message from any axios error shape.
+export function getErrorMessage(err, fallback = "Something went wrong. Please try again.") {
+  if (!err) return fallback
+  const detail = err.response?.data?.error?.message
+    || err.response?.data?.detail
+    || err.message
+  return detail || fallback
 }
 
 // ── API surfaces ──────────────────────────────────────────────────────────────

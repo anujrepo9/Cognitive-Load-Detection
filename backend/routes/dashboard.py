@@ -97,6 +97,14 @@ def dashboard(
         for b in reversed(recent_behavior)
     ]
 
+    # Aggregate metrics across the recent behavior window
+    wpm_values     = [b.typing_wpm for b in recent_behavior if b.typing_wpm]
+    avg_wpm        = round(sum(wpm_values) / len(wpm_values), 1) if wpm_values else None
+    # chars_per_min approximates typing events; use as a proxy for key count
+    typing_events  = sum(b.chars_per_min for b in recent_behavior) or None
+    # click_rate (clicks/min) × records gives a rough mouse-event count
+    mouse_events   = round(sum(b.click_rate for b in recent_behavior)) or None
+
     return DashboardResponse(
         sessions_today    = sessions_today,
         avg_load          = avg_load,
@@ -104,6 +112,9 @@ def dashboard(
         label_distribution= dict(label_dist),
         wpm_trend         = wpm_trend,
         feature_importance= FEATURE_IMPORTANCE,
+        avg_wpm           = avg_wpm,
+        typing_events     = typing_events,
+        mouse_events      = mouse_events,
     )
 
 

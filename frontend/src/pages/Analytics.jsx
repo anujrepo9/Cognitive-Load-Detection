@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { motion } from "framer-motion"
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie,
   Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts"
-import { BarChart3, TrendingUp, PieChart as PieIcon, Loader2, AlertCircle } from "lucide-react"
-import { analyticsAPI } from "../services/api"
+import { BarChart3, TrendingUp, PieChart as PieIcon, Loader2, AlertCircle, RefreshCw } from "lucide-react"
+import { analyticsAPI, getErrorMessage } from "../services/api"
 import ChartCard from "../components/ui/ChartCard"
 import EmptyState from "../components/ui/EmptyState"
 import { SkeletonPage } from "../components/ui/Skeleton"
@@ -13,11 +13,13 @@ import { SkeletonPage } from "../components/ui/Skeleton"
 const LOAD_COLORS = { low: "#10B981", medium: "#F59E0B", high: "#EF4444" }
 
 const tooltipStyle = {
-  background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12,
-  fontSize: 12, color: "#0F172A",
+  background: "var(--tw-bg, #fff)",
+  border: "1px solid #E2E8F0",
+  borderRadius: 12,
+  fontSize: 12,
+  color: "#0F172A",
 }
 
-// Build pie data from trend points
 function buildPieData(points) {
   const counts = { low: 0, medium: 0, high: 0 }
   points.forEach((p) => { if (counts[p.load_level] != null) counts[p.load_level]++ })
@@ -26,12 +28,17 @@ function buildPieData(points) {
     .map(([name, value]) => ({ name, value }))
 }
 
-// Downsample trend points to at most maxPts for chart rendering
 function downsample(points, maxPts = 60) {
   if (points.length <= maxPts) return points
   const step = Math.ceil(points.length / maxPts)
   return points.filter((_, i) => i % step === 0)
 }
+
+const RANGE_OPTIONS = [
+  { label: "24h", value: 24  },
+  { label: "7d",  value: 168 },
+  { label: "30d", value: 720 },
+]
 
 export default function Analytics() {
   const [trends,   setTrends]   = useState(null)
@@ -40,33 +47,29 @@ export default function Analytics() {
   const [error,    setError]    = useState(null)
   const [hours,    setHours]    = useState(24)
 
-  const load = (h = hours) => {
+  const load = useCallback((h) => {
     setLoading(true)
     setError(null)
-    Promise.all([
-      analyticsAPI.trends(h, 500),
-      analyticsAPI.features(),
-    ])
-      .then(([tRes, fRes]) => {
-        setTrends(tRes.data)
-        setFeatures(fRes.data)
-      })
-      .catch(() => setError("Could not load analytics data"))
+    Promise.all([analyticsAPI.trends(h, 500), analyticsAPI.features()])
+      .then(([tRes, fRes]) => { setTrends(tRes.data); setFeatures(fRes.data) })
+      .catch((err) => setError(getErrorMessage(err, "Could not load analytics data.")))
       .finally(() => setLoading(false))
-  }
+  }, [])
 
-  useEffect(() => { load() }, [])  // eslint-disable-line
+  useEffect(() => { load(hours) }, [])  // eslint-disable-line
+
+  const changeRange = (h) => { setHours(h); load(h) }
 
   const trendPoints = trends?.points ?? []
   const chartPoints = downsample(trendPoints).map((p) => ({
     time:  new Date(p.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     score: Math.round(p.confidence * 100),
     wpm:   p.wpm ?? 0,
+    level: p.load_level,
   }))
   const pieData = buildPieData(trendPoints)
 
-  // Feature importance from per_load means — variance between low vs high
-  const featureImportance = features?.stats
+  const featureVariability = features?.stats
     ?.map((s) => ({
       feature:    s.feature.replace(/_/g, " "),
       importance: parseFloat(s.std.toFixed(3)),
@@ -83,18 +86,15 @@ export default function Analytics() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Analytics</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Deep insights into your cognitive performance
+            Deep insights into your cognitive performance patterns
           </p>
         </div>
-        {/* Time-range selector */}
-        <div className="flex gap-2">
-          {[
-            { label: "24h", value: 24 },
-            { label: "7d",  value: 168 },
-            { label: "30d", value: 720 },
-          ].map(({ label, value }) => (
+
+        <div className="flex items-center gap-2" role="group" aria-label="Time range">
+          {RANGE_OPTIONS.map(({ label, value }) => (
             <button key={value}
-              onClick={() => { setHours(value); load(value) }}
+              onClick={() => changeRange(value)}
+              aria-pressed={hours === value}
               className={`px-4 py-2 rounded-xl text-sm font-medium transition-all
                 ${hours === value
                   ? "bg-primary text-white shadow-glow-primary"
@@ -102,39 +102,50 @@ export default function Analytics() {
               {label}
             </button>
           ))}
+          <button onClick={() => load(hours)}
+            aria-label="Refresh analytics"
+            className="p-2 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-500
+              hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors">
+            <RefreshCw className="w-4 h-4" />
+          </button>
         </div>
       </motion.div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-xl bg-red-50 dark:bg-red-900/20
-          border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">
-          <AlertCircle className="w-4 h-4 shrink-0" /> {error}
+        <div role="alert" className="flex items-center gap-2 rounded-xl bg-red-50
+          dark:bg-red-900/20 border border-red-200 dark:border-red-800
+          px-4 py-3 text-sm text-red-600 dark:text-red-400">
+          <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+          {error}
         </div>
       )}
 
       {loading && (
-        <div className="flex justify-center py-8">
+        <div className="flex justify-center py-8" aria-live="polite" aria-label="Loading">
           <Loader2 className="w-6 h-6 animate-spin text-primary" />
         </div>
       )}
 
-      {!loading && (
+      {!loading && !error && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Load distribution pie */}
-          <ChartCard title="Load distribution" subtitle="Proportion of each load level" icon={PieIcon}>
+          <ChartCard title="Load distribution" subtitle="Proportion of each cognitive load level" icon={PieIcon}>
             {pieData.length === 0 ? (
-              <EmptyState icon={PieIcon} title="No data yet" description="Start a session to see your load distribution." />
+              <EmptyState icon={PieIcon} title="No data yet"
+                description="Start a tracking session to see your load distribution." />
             ) : (
               <ResponsiveContainer width="100%" height={240}>
                 <PieChart>
                   <Pie data={pieData} dataKey="value" nameKey="name"
                     cx="50%" cy="50%" outerRadius={90} innerRadius={55}
-                    paddingAngle={3} label={({ percent }) => `${(percent * 100).toFixed(0)}%`}>
+                    paddingAngle={3}
+                    label={({ percent, name }) => `${name}: ${(percent * 100).toFixed(0)}%`}>
                     {pieData.map((entry) => (
                       <Cell key={entry.name} fill={LOAD_COLORS[entry.name] || "#94A3B8"} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={tooltipStyle} />
+                  <Tooltip contentStyle={tooltipStyle}
+                    formatter={(value, name) => [value, `${name} load`]} />
                   <Legend wrapperStyle={{ fontSize: 12, color: "#94A3B8" }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -142,9 +153,11 @@ export default function Analytics() {
           </ChartCard>
 
           {/* Confidence trend */}
-          <ChartCard title="Confidence over time" subtitle="Model confidence score" icon={TrendingUp}>
+          <ChartCard title="Model confidence over time"
+            subtitle="Higher confidence means the model is more certain of the prediction" icon={TrendingUp}>
             {chartPoints.length < 2 ? (
-              <EmptyState icon={TrendingUp} title="No trend data" description="More sessions needed to build a trend." />
+              <EmptyState icon={TrendingUp} title="Not enough data"
+                description="More sessions are needed to build a confidence trend." />
             ) : (
               <ResponsiveContainer width="100%" height={240}>
                 <AreaChart data={chartPoints}>
@@ -156,18 +169,24 @@ export default function Analytics() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.12)" vertical={false} />
                   <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={tooltipStyle} />
-                  <Area type="monotone" dataKey="score" stroke="#2563EB" strokeWidth={2} fill="url(#confGrad2)" />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#94A3B8" }}
+                    axisLine={false} tickLine={false}
+                    tickFormatter={(v) => `${v}%`} />
+                  <Tooltip contentStyle={tooltipStyle}
+                    formatter={(v) => [`${v}%`, "Confidence"]} />
+                  <Area type="monotone" dataKey="score" stroke="#2563EB" strokeWidth={2}
+                    fill="url(#confGrad2)" name="Confidence" />
                 </AreaChart>
               </ResponsiveContainer>
             )}
           </ChartCard>
 
           {/* WPM trend */}
-          <ChartCard title="Typing WPM trend" subtitle="Words per minute over time" icon={TrendingUp}>
+          <ChartCard title="Typing speed over time"
+            subtitle="Words per minute — lower WPM may correlate with higher cognitive load" icon={TrendingUp}>
             {chartPoints.filter((p) => p.wpm > 0).length < 2 ? (
-              <EmptyState icon={TrendingUp} title="No WPM data" description="Keep typing to see your WPM trend." />
+              <EmptyState icon={TrendingUp} title="No WPM data yet"
+                description="Keep typing during sessions to see your WPM trend." />
             ) : (
               <ResponsiveContainer width="100%" height={240}>
                 <AreaChart data={chartPoints}>
@@ -179,28 +198,35 @@ export default function Analytics() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.12)" vertical={false} />
                   <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={tooltipStyle} />
-                  <Area type="monotone" dataKey="wpm" stroke="#10B981" strokeWidth={2} fill="url(#wpmGrad)" />
+                  <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false}
+                    tickFormatter={(v) => `${v} wpm`} />
+                  <Tooltip contentStyle={tooltipStyle}
+                    formatter={(v) => [`${v} wpm`, "Typing speed"]} />
+                  <Area type="monotone" dataKey="wpm" stroke="#10B981" strokeWidth={2}
+                    fill="url(#wpmGrad)" name="WPM" />
                 </AreaChart>
               </ResponsiveContainer>
             )}
           </ChartCard>
 
-          {/* Feature variability (proxy for importance) */}
-          <ChartCard title="Feature variability" subtitle="Std dev per feature — higher = more discriminative"
+          {/* Feature variability */}
+          <ChartCard title="Feature variability"
+            subtitle="Standard deviation per feature — higher variability means more discriminative signal"
             icon={BarChart3}>
-            {featureImportance.length === 0 ? (
-              <EmptyState icon={BarChart3} title="No feature data" description="Collect more sessions for feature analysis." />
+            {featureVariability.length === 0 ? (
+              <EmptyState icon={BarChart3} title="No feature data yet"
+                description="Collect more sessions for feature analysis." />
             ) : (
               <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={featureImportance} layout="vertical">
+                <BarChart data={featureVariability} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.12)" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-                  <YAxis dataKey="feature" type="category" width={130}
+                  <YAxis dataKey="feature" type="category" width={135}
                     tick={{ fontSize: 11, fill: "#64748B" }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={tooltipStyle} />
-                  <Bar dataKey="importance" fill="#2563EB" radius={[0, 8, 8, 0]} barSize={16} />
+                  <Tooltip contentStyle={tooltipStyle}
+                    formatter={(v) => [v, "Std deviation"]} />
+                  <Bar dataKey="importance" fill="#2563EB" radius={[0, 8, 8, 0]} barSize={16}
+                    name="Std deviation" />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -208,26 +234,31 @@ export default function Analytics() {
         </div>
       )}
 
-      {/* Raw stats summary */}
-      {features && features.total_records > 0 && (
+      {/* Raw stats table */}
+      {features && features.total_records > 0 && !loading && (
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
           className="card p-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
-            Feature statistics — {features.total_records.toLocaleString()} behavior records
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
+            Feature statistics
           </h3>
+          <p className="text-xs text-gray-400 mb-4">
+            Computed across {features.total_records.toLocaleString()} behavior records
+          </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full text-xs" aria-label="Feature statistics">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-slate-800">
-                  {["Feature", "Mean", "Std", "Min", "Max"].map((h) => (
-                    <th key={h} className="text-left py-2 px-3 font-medium text-gray-500">{h}</th>
+                  {["Feature", "Mean", "Std dev", "Min", "Max"].map((h) => (
+                    <th key={h} scope="col"
+                      className="text-left py-2 px-3 font-medium text-gray-500">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {features.stats.map((s) => (
                   <tr key={s.feature}
-                    className="border-b border-gray-50 dark:border-slate-800/50 hover:bg-gray-50 dark:hover:bg-slate-800/40">
+                    className="border-b border-gray-50 dark:border-slate-800/50
+                      hover:bg-gray-50 dark:hover:bg-slate-800/40">
                     <td className="py-2 px-3 font-mono text-gray-700 dark:text-gray-300">{s.feature}</td>
                     <td className="py-2 px-3 text-gray-600 dark:text-gray-400">{s.mean}</td>
                     <td className="py-2 px-3 text-gray-600 dark:text-gray-400">{s.std}</td>

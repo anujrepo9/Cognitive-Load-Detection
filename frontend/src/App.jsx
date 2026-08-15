@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom"
 import { AuthProvider, useAuth } from "./context/AuthContext"
 import { TrackingProvider } from "./context/TrackingContext"
+import { ThemeProvider } from "./context/ThemeContext"
+import { ToastProvider } from "./components/ui/Toast"
 import Sidebar from "./components/layout/Sidebar"
 import TopNav from "./components/layout/TopNav"
 import Landing from "./pages/Landing"
@@ -24,7 +26,7 @@ function ProtectedLayout() {
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <TopNav />
-        <main className="flex-1 overflow-y-auto">
+        <main id="main-content" className="flex-1 overflow-y-auto" tabIndex={-1}>
           <Outlet />
         </main>
         <TrackingConsentDialog />
@@ -41,29 +43,40 @@ function GuestLayout() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <TrackingProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route element={<GuestLayout />}>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-          </Route>
-          <Route element={<ProtectedLayout />}>
-            <Route path="/dashboard"       element={<Dashboard />} />
-            <Route path="/live"            element={<LiveMonitoring />} />
-            <Route path="/history"         element={<History />} />
-            <Route path="/analytics"       element={<Analytics />} />
-            <Route path="/reports"         element={<Reports />} />
-            <Route path="/recommendations" element={<Recommendations />} />
-            <Route path="/settings"        element={<Settings />} />
-            <Route path="/profile"         element={<Profile />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-      </TrackingProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <TrackingProvider>
+            <BrowserRouter>
+              {/* Skip-to-content link for keyboard users */}
+              <a href="#main-content"
+                className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999]
+                  focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-xl
+                  focus:shadow-lg focus:text-sm focus:font-semibold">
+                Skip to main content
+              </a>
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route element={<GuestLayout />}>
+                  <Route path="/login"    element={<Login />} />
+                  <Route path="/register" element={<Register />} />
+                </Route>
+                <Route element={<ProtectedLayout />}>
+                  <Route path="/dashboard"       element={<Dashboard />} />
+                  <Route path="/live"            element={<LiveMonitoring />} />
+                  <Route path="/history"         element={<History />} />
+                  <Route path="/analytics"       element={<Analytics />} />
+                  <Route path="/reports"         element={<Reports />} />
+                  <Route path="/recommendations" element={<Recommendations />} />
+                  <Route path="/settings"        element={<Settings />} />
+                  <Route path="/profile"         element={<Profile />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </TrackingProvider>
+        </ToastProvider>
+      </AuthProvider>
+    </ThemeProvider>
   )
 }

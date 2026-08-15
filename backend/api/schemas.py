@@ -122,6 +122,9 @@ class DashboardResponse(BaseModel):
     label_distribution:  dict
     wpm_trend:           list
     feature_importance:  list
+    avg_wpm:             Optional[float] = None   # average WPM across recent behavior records
+    typing_events:       Optional[int]   = None   # total key presses in recent window
+    mouse_events:        Optional[int]   = None   # total mouse events in recent window
 
 
 class SessionOut(BaseModel):

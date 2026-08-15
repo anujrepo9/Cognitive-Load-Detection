@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Reduced-motion: disable all transitions / animations ─────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @layer base {
   body {
     @apply bg-surface-light text-gray-900 font-sans antialiased transition-colors duration-300;
@@ -9,17 +19,26 @@
   .dark body {
     @apply bg-surface-dark text-gray-100;
   }
+
+  /* Focus ring — high-contrast for keyboard navigation */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-white dark:ring-offset-slate-900;
+  }
+
   ::-webkit-scrollbar { @apply w-1.5 h-1.5; }
   ::-webkit-scrollbar-track { @apply bg-transparent; }
   ::-webkit-scrollbar-thumb { @apply bg-gray-600/50 rounded-full; }
   ::-webkit-scrollbar-thumb:hover { @apply bg-gray-500/60; }
 
   input, select, textarea { @apply outline-none; }
+
+  /* Ensure sufficient color contrast on placeholder text */
+  ::placeholder { @apply text-gray-500 dark:text-gray-400; }
 }
 
 @layer components {
   /* Premium card */
-.card {
+  .card {
     @apply bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800
       rounded-2xl shadow-sm dark:shadow-none
       transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5;
@@ -57,11 +76,11 @@
     background-size: 200% 100%;
   }
 
-  /* Input field */
+  /* Input field — meets WCAG AA contrast on both light/dark */
   .input {
-    @apply w-full bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700
+    @apply w-full bg-gray-50 dark:bg-slate-800 border border-gray-300 dark:border-slate-600
       rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100
-      placeholder-gray-400 dark:placeholder-gray-500
+      placeholder-gray-500 dark:placeholder-gray-400
       focus:border-primary focus:ring-2 focus:ring-primary/20
       transition-all duration-200;
   }
@@ -72,7 +91,8 @@
       bg-primary hover:bg-primary-light text-white text-sm font-medium
       rounded-xl shadow-glow-primary hover:shadow-lg
       transition-all duration-200 hover:-translate-y-0.5
-      active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
+      active:scale-95 disabled:opacity-50 disabled:pointer-events-none
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50;
   }
 
   .btn-secondary {
@@ -80,20 +100,22 @@
       bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700
       text-gray-700 dark:text-gray-200 text-sm font-medium
       rounded-xl border border-gray-200 dark:border-slate-700
-      transition-all duration-200 hover:-translate-y-0.5 active:scale-95;
+      transition-all duration-200 hover:-translate-y-0.5 active:scale-95
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50;
   }
 
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
       text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800
-      text-sm font-medium rounded-xl transition-all duration-200;
+      text-sm font-medium rounded-xl transition-all duration-200
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50;
   }
 
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
       bg-danger hover:bg-danger-light text-white text-sm font-medium
       rounded-xl shadow-lg transition-all duration-200 hover:-translate-y-0.5
-      active:scale-95;
+      active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/50;
   }
 
   /* Badge */
@@ -108,7 +130,7 @@
       uppercase tracking-wider;
   }
 
-  /* Table */
+  /* Table rows */
   .table-row {
     @apply border-b border-gray-100 dark:border-slate-800
       hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors;
@@ -118,7 +140,31 @@
   .progress-track {
     @apply h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden;
   }
-.progress-fill {
+  .progress-fill {
     @apply h-full rounded-full transition-all duration-500;
   }
+
+  /* Screen-reader only (skip link) */
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+  .focus\:not-sr-only:focus {
+    position: fixed;
+    width: auto; height: auto;
+    padding: inherit; margin: inherit;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+  }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
 }

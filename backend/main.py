@@ -42,27 +42,31 @@ app = FastAPI(
 # ── Global exception handlers ────────────────────────────────────────────────
 register_exception_handlers(app)
 
-# ── CORS ─────────────────────────────────────────────────────────────────────
-# Allow all localhost ports for local development.
-# In production, replace with your real frontend URL.
+# ── Middleware stack (Starlette wraps in LIFO order — last added = outermost) ─
+# Desired execution order for every request:
+#   CORS → MaxBodySize → RequestID → route handler
+# So we register them in the opposite order:
+
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(MaxBodySizeMiddleware, max_bytes=MAX_BODY_SIZE)
+
+# CORSMiddleware is registered last so it wraps everything else.
+# This guarantees CORS headers are present on ALL responses — including
+# 413 (body too large) and 500 (unhandled exception) from inner middleware.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",   # Vite default
-        "http://localhost:3000",   # CRA / alternate
+        "http://localhost:5173",   # Vite dev server (default)
+        "http://localhost:3000",   # alternate dev port
         "http://localhost:4173",   # Vite preview
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
-        *CORS_ORIGINS,             # anything extra from .env
+        *CORS_ORIGINS,             # anything extra from .env CORS_ORIGINS
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ── Request validation / metadata middleware ─────────────────────────────────
-app.add_middleware(RequestIDMiddleware)
-app.add_middleware(MaxBodySizeMiddleware, max_bytes=MAX_BODY_SIZE)
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(auth.router)

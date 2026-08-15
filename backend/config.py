@@ -1,15 +1,33 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Project root is one level above this file (backend/)
+_BACKEND_DIR  = Path(__file__).parent
+_PROJECT_ROOT = _BACKEND_DIR.parent
+
+
+def _resolve_path(env_key: str, default_relative: str) -> str:
+    """
+    Return the path from the environment variable if set, otherwise resolve
+    the default relative to the project root so the backend works correctly
+    regardless of which directory uvicorn is launched from.
+    """
+    raw = os.getenv(env_key)
+    if raw:
+        return raw
+    return str(_PROJECT_ROOT / default_relative)
+
 
 DATABASE_URL               = os.getenv("DATABASE_URL", "sqlite:///./cogniload.db")
 SECRET_KEY                 = os.getenv("SECRET_KEY", "dev-secret-change-me")
 ALGORITHM                  = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 1440))
-MODEL_PATH                 = os.getenv("MODEL_PATH",  "ml/saved_models/model.joblib")
-SCALER_PATH                = os.getenv("SCALER_PATH", "ml/saved_models/scaler.joblib")
-MODEL_META_PATH            = os.getenv("MODEL_META_PATH", "ml/saved_models/meta.json")
+MODEL_PATH                 = _resolve_path("MODEL_PATH",      "ml/saved_models/model.joblib")
+SCALER_PATH                = _resolve_path("SCALER_PATH",     "ml/saved_models/scaler.joblib")
+MODEL_META_PATH            = _resolve_path("MODEL_META_PATH", "ml/saved_models/meta.json")
 CORS_ORIGINS               = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
 
 # ── New settings (Phase 2) ───────────────────────────────────────────────────

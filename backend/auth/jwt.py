@@ -103,7 +103,7 @@ def validate_refresh_token(raw: str, db: Session) -> User:
         db.commit()
         raise HTTPException(status_code=401, detail="Refresh token expired")
 
-    user = db.query(User).get(record.user_id)
+    user = db.get(User, record.user_id)
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
     return user
