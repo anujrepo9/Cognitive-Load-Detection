@@ -31,7 +31,14 @@ export function TrackingProvider({ children }) {
       const [settingsResult, sessionResult] = await Promise.allSettled([settingsAPI.get(), sessionAPI.current()])
       if (settingsResult.status === "rejected") throw settingsResult.reason
       setFlushIntervalMs((settingsResult.value.data?.flush_interval_sec || DEFAULT_FLUSH_MS) * 1000)
-      if (sessionResult.status === "fulfilled") setSession(sessionResult.value.data)
+      if (sessionResult.status === "fulfilled") {
+        setSession(sessionResult.value.data)
+      } else {
+        // 404 simply means no active session — that is not a backend error
+        const status = sessionResult.reason?.response?.status
+        if (status !== 404) throw sessionResult.reason
+        setSession(null)
+      }
       setBackendStatus("online")
     } catch {
       setBackendStatus("unavailable")
