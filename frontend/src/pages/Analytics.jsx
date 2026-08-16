@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie,
@@ -65,7 +66,8 @@ export default function Analytics() {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => { load(hours) }, [])  // eslint-disable-line
+  // Gate initial load on auth — prevents 401 on hard reload
+  useAuthFetch(() => { load(hours) }, [])
 
   const changeRange = (h) => { setHours(h); load(h) }
 

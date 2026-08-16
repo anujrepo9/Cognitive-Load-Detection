@@ -1,9 +1,5 @@
 import axios from "axios"
 
-// In development Vite proxies all API paths to localhost:8000, so we use a
-// same-origin base ("") which avoids any cross-origin request and therefore
-// any CORS error.  In a production build you set VITE_API_URL to the real
-// backend origin; the proxy is not involved there.
 const BASE = import.meta.env.VITE_API_URL || ""
 
 const api = axios.create({ baseURL: BASE, timeout: 10000 })
@@ -16,13 +12,6 @@ api.interceptors.request.use((config) => {
 })
 
 // ── Response: auto-refresh on 401 / 403, retry once ──────────────────────────
-//
-// Why 403 in addition to 401?
-// FastAPI's HTTPBearer() returns 403 "Not authenticated" when the Authorization
-// header is completely absent (e.g. first request on a hard page refresh before
-// the interceptor fires), and 401 when the token is present but invalid/expired.
-// We treat both the same way: attempt a silent token refresh, then retry.
-//
 let _refreshing = false
 let _waitQueue  = []
 
@@ -31,12 +20,10 @@ function _processQueue(error, token = null) {
   _waitQueue = []
 }
 
-// Helper: is this status one we should attempt a token refresh for?
 function _isAuthError(status) {
   return status === 401 || status === 403
 }
 
-// Helper: is this a route we should never retry (to avoid infinite loops)?
 function _isAuthRoute(url = "") {
   return url.includes("/auth/refresh") || url.includes("/auth/logout")
 }
@@ -47,26 +34,21 @@ api.interceptors.response.use(
     const original = err.config
     const status   = err.response?.status
 
-    // Pass through immediately if:
-    //  • Not an auth error
-    //  • Already retried
-    //  • This is the refresh/logout endpoint itself
+    // Pass through immediately for non-auth errors, already-retried, or auth endpoints
     if (!_isAuthError(status) || original._retried || _isAuthRoute(original.url)) {
-      // Only wipe the session if the refresh endpoint itself failed (not logout)
-      if (original.url?.includes("/auth/refresh")) _clearSession()
+      // Do NOT call _clearSession here — let AuthContext decide what to do.
+      // A failed /auth/refresh just means tokens are dead; callers handle it.
       return Promise.reject(err)
     }
 
-    // Don't attempt refresh if there's no refresh token stored
     const refreshToken = localStorage.getItem("refreshToken")
     if (!refreshToken) {
-      _clearSession()
+      // No refresh token — reject without redirecting; AuthContext will handle it
       return Promise.reject(err)
     }
 
     original._retried = true
 
-    // If a refresh is already in flight, queue this request and wait
     if (_refreshing) {
       return new Promise((resolve, reject) => {
         _waitQueue.push({ resolve, reject })
@@ -78,7 +60,6 @@ api.interceptors.response.use(
 
     _refreshing = true
     try {
-      // Use plain axios (not the instance) so this call bypasses our interceptor
       const { data } = await axios.post(`${BASE}/auth/refresh`, {
         refresh_token: refreshToken,
       })
@@ -87,9 +68,6 @@ api.interceptors.response.use(
 
       localStorage.setItem("token",        newAccess)
       localStorage.setItem("refreshToken", newRefresh)
-      // /auth/refresh doesn't return user; preserve what's already stored
-
-      // Prime the default header so subsequent calls don't need the interceptor
       api.defaults.headers.common.Authorization = `Bearer ${newAccess}`
 
       _processQueue(null, newAccess)
@@ -98,7 +76,11 @@ api.interceptors.response.use(
       return api(original)
     } catch (refreshErr) {
       _processQueue(refreshErr)
-      _clearSession()
+      // Remove tokens so AuthContext knows the session is dead,
+      // but do NOT hard-redirect here — AuthContext controls navigation.
+      localStorage.removeItem("token")
+      localStorage.removeItem("refreshToken")
+      localStorage.removeItem("user")
       return Promise.reject(refreshErr)
     } finally {
       _refreshing = false
@@ -106,25 +88,13 @@ api.interceptors.response.use(
   },
 )
 
-function _clearSession() {
-  localStorage.removeItem("token")
-  localStorage.removeItem("refreshToken")
-  localStorage.removeItem("user")
-  window.location.href = "/login"
-}
-
-// ── Proactive token bootstrap ─────────────────────────────────────────────────
-// On a hard page refresh the axios instance is brand-new and has no default
-// Authorization header.  The request interceptor above fills it per-request,
-// which is sufficient — but priming it here as well prevents any edge-case
-// race where a request fires before the interceptor chain is fully set up.
+// ── Proactive token bootstrap ──────────────────────────────────────────────────
 ;(function _bootstrapToken() {
   const token = localStorage.getItem("token")
   if (token) api.defaults.headers.common.Authorization = `Bearer ${token}`
 })()
 
 // ── Centralised error helper ──────────────────────────────────────────────────
-// Returns a user-readable message from any axios error shape.
 export function getErrorMessage(err, fallback = "Something went wrong. Please try again.") {
   if (!err) return fallback
   const detail = err.response?.data?.error?.message

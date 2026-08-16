@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
 import {
   History as HistoryIcon, Download, Search,
@@ -37,7 +38,8 @@ export default function History() {
       .finally(() => setLoading(false))
   }, [fromDate, toDate])
 
-  useEffect(() => { fetchHistory(page) }, [page])  // eslint-disable-line
+  // Gate on auth to avoid 401 on hard reload; re-runs when page changes
+  useAuthFetch(() => { fetchHistory(page) }, [page])
 
   const applyFilters = () => { setPage(1); fetchHistory(1, fromDate, toDate) }
 

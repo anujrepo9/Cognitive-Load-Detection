@@ -1,49 +1,68 @@
 import { createContext, useContext, useState, useEffect } from "react"
+import axios from "axios"
 import { authAPI } from "../services/api"
 
 const AuthContext = createContext(null)
 
+const BASE = import.meta.env.VITE_API_URL || ""
+
 export function AuthProvider({ children }) {
-  // Seed user from localStorage so the UI doesn't flash a login redirect
-  // on hard refresh.  We then validate the token silently in the background.
   const [user,  setUser]  = useState(
     () => JSON.parse(localStorage.getItem("user") || "null")
   )
   const [ready, setReady] = useState(false)
 
-  // ── Silent token validation on mount ────────────────────────────────────────
-  // After a page refresh the stored access token may be expired.  We call
-  // GET /auth/profile (which requires a valid token) to confirm the session is
-  // still live.  The axios interceptor in api.js will automatically try to
-  // refresh an expired access token using the refresh token — so this call
-  // succeeds silently in the happy path.  Only if both tokens are gone/invalid
-  // will it redirect to /login.
   useEffect(() => {
-    const storedToken = localStorage.getItem("token")
-    if (!storedToken) {
-      // No token at all — clear any stale user state and mark ready
+    const storedToken  = localStorage.getItem("token")
+    const refreshToken = localStorage.getItem("refreshToken")
+
+    // No tokens — not logged in
+    if (!storedToken && !refreshToken) {
       setUser(null)
       localStorage.removeItem("user")
       setReady(true)
       return
     }
 
+    // Validate the stored access token.
+    // The axios interceptor will auto-refresh on 401/403 and retry, so
+    // .then() here means we have a confirmed valid (possibly just-refreshed) token.
     authAPI.profile()
       .then(({ data }) => {
-        // Token still valid; update user in case profile changed
         setUser(data)
         localStorage.setItem("user", JSON.stringify(data))
+        setReady(true)
       })
-      .catch(() => {
-        // Both access and refresh tokens failed (interceptor already tried).
-        // _clearSession() in api.js will redirect to /login, but we also
-        // clean up state here defensively.
-        setUser(null)
-        localStorage.removeItem("token")
-        localStorage.removeItem("refreshToken")
-        localStorage.removeItem("user")
+      .catch(async () => {
+        // Both the original request AND the interceptor's refresh attempt failed.
+        // Try one final explicit refresh before giving up.
+        const latestRefreshToken = localStorage.getItem("refreshToken")
+        if (!latestRefreshToken) {
+          _clearLocalSession()
+          setUser(null)
+          setReady(true)
+          window.location.href = "/login"
+          return
+        }
+        try {
+          const { data } = await axios.post(`${BASE}/auth/refresh`, {
+            refresh_token: latestRefreshToken,
+          })
+          localStorage.setItem("token",        data.access_token)
+          localStorage.setItem("refreshToken", data.refresh_token ?? latestRefreshToken)
+          // Fetch profile with the brand-new token
+          const { data: profileData } = await authAPI.profile()
+          setUser(profileData)
+          localStorage.setItem("user", JSON.stringify(profileData))
+          setReady(true)
+        } catch {
+          // Truly dead session — clear everything and send to login
+          _clearLocalSession()
+          setUser(null)
+          setReady(true)
+          window.location.href = "/login"
+        }
       })
-      .finally(() => setReady(true))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -57,21 +76,14 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     const refreshToken = localStorage.getItem("refreshToken")
     if (refreshToken) {
-      try {
-        await authAPI.logout({ refresh_token: refreshToken })
-      } catch {
-        // ignore — clear locally regardless
-      }
+      try { await authAPI.logout({ refresh_token: refreshToken }) } catch { /* ignore */ }
     }
-    localStorage.removeItem("token")
-    localStorage.removeItem("refreshToken")
-    localStorage.removeItem("user")
+    _clearLocalSession()
     setUser(null)
   }
 
-  // Don't render children until we know whether the stored token is valid.
-  // This prevents a flash where protected pages briefly render with stale
-  // user data before the profile check completes.
+  // Don't render anything until auth state is confirmed — this guarantees
+  // no child component fires an API call before the token is valid.
   if (!ready) return null
 
   return (
@@ -79,6 +91,12 @@ export function AuthProvider({ children }) {
       {children}
     </AuthContext.Provider>
   )
+}
+
+function _clearLocalSession() {
+  localStorage.removeItem("token")
+  localStorage.removeItem("refreshToken")
+  localStorage.removeItem("user")
 }
 
 export const useAuth = () => useContext(AuthContext)

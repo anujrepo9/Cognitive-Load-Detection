@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
 import {
   Activity, Zap, Target, Calendar, BarChart3, RotateCcw,
@@ -73,8 +74,9 @@ export default function Dashboard() {
     ])
   }, [prediction])
 
-  // Fetch dashboard summary + model info once on mount
-  useEffect(() => {
+  // Fetch dashboard summary + model info — gated on auth so hard-reload
+  // doesn't fire before the token is confirmed (prevents 401/403 errors).
+  useAuthFetch(() => {
     Promise.allSettled([
       dashboardAPI.overview(),
       modelAPI.info(),

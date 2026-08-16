@@ -35,9 +35,6 @@ const tooltipStyle = {
 }
 
 export default function LiveMonitoring() {
-  // Pull `quality` from TrackingContext — it holds live keyEvents and mouseEvents
-  // counts updated every second directly from the tracker buffer, so they show
-  // real numbers even before the first prediction fires.
   const { websocketStatus: status, prediction, session, trackingState, quality } = useTracking()
   const connected = status === "connected"
 
@@ -47,6 +44,8 @@ export default function LiveMonitoring() {
   const [confidence,  setConfidence]  = useState(0)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [elapsed,     setElapsed]     = useState(0)
+  // Track the most recently seen WPM so the stat card shows a live value
+  const [latestWpm,   setLatestWpm]   = useState(null)
 
   // Session timer
   useEffect(() => {
@@ -58,26 +57,37 @@ export default function LiveMonitoring() {
     return () => clearInterval(tick)
   }, [session?.session_id, session?.start_time, trackingState])
 
-  // React to WebSocket prediction pushes
+  // React to prediction pushes (both WebSocket and HTTP response via onPrediction callback)
   useEffect(() => {
     if (!prediction) return
-    const { load_level, confidence: conf } = prediction
+    const { load_level, confidence: conf, typing_wpm } = prediction
     const time = new Date().toLocaleTimeString()
     setLoadLevel(load_level)
     setConfidence(Math.round(conf * 100))
     setLastUpdated(new Date())
     setHistory((prev) => [...prev.slice(-29), { time, score: Math.round(conf * 100) }])
-    setWpmHistory((prev) => [...prev.slice(-29), { time, wpm: prediction.typing_wpm ?? 0 }])
+
+    // Only update WPM history and latest value when a real WPM is present
+    if (typing_wpm != null) {
+      setLatestWpm(typing_wpm)
+      setWpmHistory((prev) => [...prev.slice(-29), { time, wpm: typing_wpm }])
+    }
   }, [prediction])
+
+  // Reset WPM display when tracking stops
+  useEffect(() => {
+    if (trackingState === "idle") {
+      setLatestWpm(null)
+      setWpmHistory([])
+    }
+  }, [trackingState])
 
   const wsUI   = STATUS_UI[status] || STATUS_UI.offline
   const WsIcon = wsUI.icon
 
-  // Live mouse event count comes directly from the tracker buffer via quality,
-  // so it reflects real activity even before the first prediction is sent.
   const liveMouseEvents = quality?.mouseEvents ?? 0
-  // Show WPM from the last prediction, or "—" if none yet
-  const liveWpm = wpmHistory.length ? wpmHistory[wpmHistory.length - 1].wpm : "—"
+  // Show the most recent WPM value, or "—" if tracking hasn't produced one yet
+  const liveWpm = latestWpm != null ? latestWpm : "—"
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
@@ -85,7 +95,6 @@ export default function LiveMonitoring() {
         title="Live Monitoring"
         subtitle="Real-time behavioral signals — data flows via WebSocket after each prediction"
       >
-        {/* WebSocket status badge */}
         <span
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
             ${wsUI.bg} ${wsUI.color} text-xs font-semibold`}

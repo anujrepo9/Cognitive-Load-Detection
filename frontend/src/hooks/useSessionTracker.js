@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef } from "react"
 import { behaviorAPI } from "../services/api"
 
 // Minimum key events required before a keyboard-driven flush is sent.
-// Lowered from 5 → 2 so predictions fire much sooner after the user starts typing.
 const MIN_KEY_EVENTS = 2
 
 // If the user has no keyboard activity but has significant mouse activity,
@@ -10,7 +9,7 @@ const MIN_KEY_EVENTS = 2
 const MIN_MOUSE_EVENTS_FOR_FLUSH = 10
 
 export function useSessionTracker({ active, flushIntervalMs, onPrediction, onQualityChange, onError }) {
-  const buffer = useRef({ keyEvents: [], mouseEvents: [], scrollEvents: [], sessionStart: Date.now() })
+  const buffer = useRef({ keyEvents: [], mouseEvents: [], scrollEvents: [], sessionStart: Date.now(), intervalStart: Date.now() })
   const lastKey = useRef({ key: null, downTime: null })
   const lastMouse = useRef({ x: 0, y: 0, time: Date.now() })
   const idleTimer = useRef(null)
@@ -49,15 +48,18 @@ export function useSessionTracker({ active, flushIntervalMs, onPrediction, onQua
   const onWheel = useCallback((event) => { buffer.current.scrollEvents.push({ deltaY: event.deltaY }); resetIdle() }, [resetIdle])
 
   const extractFeatures = useCallback(() => {
-    const { keyEvents, mouseEvents, scrollEvents, sessionStart } = buffer.current
+    const { keyEvents, mouseEvents, scrollEvents, sessionStart, intervalStart } = buffer.current
 
     // Require either enough key events OR enough mouse events to flush.
-    // Previously only key events were checked, so mouse-only sessions never produced predictions.
     const hasKeyData   = keyEvents.length >= MIN_KEY_EVENTS
     const hasMouseData = mouseEvents.filter((e) => e.speed != null).length >= MIN_MOUSE_EVENTS_FOR_FLUSH
     if (!hasKeyData && !hasMouseData) return null
 
-    const minutes = (Date.now() - sessionStart) / 60_000
+    // Use intervalStart (reset each flush) for WPM so the rate reflects THIS
+    // interval's typing speed, not the entire session elapsed time.
+    const intervalMinutes = (Date.now() - intervalStart) / 60_000
+    const sessionMinutes  = (Date.now() - sessionStart)  / 60_000
+
     const holds = keyEvents.map((event) => event.holdTime)
     const flights = keyEvents.map((event) => event.flightTime).filter(Boolean)
     const errors = keyEvents.filter((event) => event.isError).length
@@ -68,19 +70,23 @@ export function useSessionTracker({ active, flushIntervalMs, onPrediction, onQua
     const clicks = mouseEvents.filter((event) => event.type === "click").length
     const distance = mouseEvents.reduce((total, event) => total + (event.distance || 0), 0)
     const pauses = keyEvents.slice(1).map((event, index) => event.timestamp - keyEvents[index].timestamp).filter((gap) => gap > 2000)
+
+    // WPM is words-in-this-interval / minutes-in-this-interval
+    const wpm = intervalMinutes > 0 ? Math.round(words / intervalMinutes) : 0
+
     return {
-      typing_wpm:          minutes > 0 ? Math.round(words / minutes) : 0,
+      typing_wpm:          wpm,
       avg_hold_ms:         Math.round(averageHold),
       avg_flight_ms:       Math.round(average(flights)),
       error_rate:          keyEvents.length > 0 ? Number((errors / keyEvents.length).toFixed(4)) : 0,
       pause_count:         pauses.length,
       avg_pause_ms:        Math.round(average(pauses)),
       typing_variance:     Number(variation.toFixed(4)),
-      chars_per_min:       minutes > 0 ? Math.round(keyEvents.length / minutes) : 0,
+      chars_per_min:       sessionMinutes > 0 ? Math.round(keyEvents.length / sessionMinutes) : 0,
       avg_cursor_speed:    Math.round(average(speeds)),
-      click_rate:          minutes > 0 ? Number((clicks / minutes).toFixed(2)) : 0,
+      click_rate:          sessionMinutes > 0 ? Number((clicks / sessionMinutes).toFixed(2)) : 0,
       double_click_rate:   0,
-      scroll_rate:         minutes > 0 ? Number((scrollEvents.length / minutes).toFixed(2)) : 0,
+      scroll_rate:         sessionMinutes > 0 ? Number((scrollEvents.length / sessionMinutes).toFixed(2)) : 0,
       idle_time_pct:       Number(Math.min(totalIdle.current / ((Date.now() - sessionStart) || 1), 0.95).toFixed(4)),
       avg_hover_ms:        0,
       movement_distance:   Math.round(distance),
@@ -92,6 +98,8 @@ export function useSessionTracker({ active, flushIntervalMs, onPrediction, onQua
     buffer.current.keyEvents = []
     buffer.current.mouseEvents = []
     buffer.current.scrollEvents = []
+    // Reset the interval clock so next WPM is computed over the next window
+    buffer.current.intervalStart = Date.now()
     totalIdle.current = 0
     reportQuality()
   }, [reportQuality])
@@ -99,12 +107,15 @@ export function useSessionTracker({ active, flushIntervalMs, onPrediction, onQua
   const flush = useCallback(async () => {
     const features = extractFeatures()
     if (!features) return false
+    // Snapshot WPM before resetting the buffer
+    const flushWpm = features.typing_wpm
     // Reset buffer before the API call so stale events don't accumulate
-    // if the request is slow or fails.
     resetBuffer()
     try {
       const { data } = await behaviorAPI.predict(features)
-      callbacks.current.onPrediction?.({ ...data, typing_wpm: features.typing_wpm })
+      // Merge WPM from the local features since the HTTP PredictionResponse
+      // schema does not include typing_wpm in its response body.
+      callbacks.current.onPrediction?.({ ...data, typing_wpm: flushWpm })
       return true
     } catch {
       callbacks.current.onError?.("Could not send this activity window. Check your connection and retry.")
@@ -115,6 +126,7 @@ export function useSessionTracker({ active, flushIntervalMs, onPrediction, onQua
   useEffect(() => {
     if (!active) return undefined
     buffer.current.sessionStart = Date.now()
+    buffer.current.intervalStart = Date.now()
     reportQuality()
     const qualityTimer = setInterval(reportQuality, 1000)
     const flushTimer = setInterval(flush, flushIntervalMs)

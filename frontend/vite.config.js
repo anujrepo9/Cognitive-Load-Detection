@@ -6,11 +6,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // Proxy all /api/* calls and bare REST paths to the FastAPI backend.
-      // This eliminates CORS errors during local development — the browser
-      // only ever talks to the Vite origin (localhost:5173); Vite forwards
-      // the request server-side and the browser never sees a cross-origin
-      // response.
       '/auth':           { target: 'http://localhost:8000', changeOrigin: true },
       '/session':        { target: 'http://localhost:8000', changeOrigin: true },
       '/dashboard':      { target: 'http://localhost:8000', changeOrigin: true },
@@ -23,11 +18,21 @@ export default defineConfig({
       '/settings':       { target: 'http://localhost:8000', changeOrigin: true },
       '/model':          { target: 'http://localhost:8000', changeOrigin: true },
       '/health':         { target: 'http://localhost:8000', changeOrigin: true },
-      // WebSocket proxy — must use ws target
+      // WebSocket proxy — suppress expected ECONNABORTED noise when backend
+      // restarts or connection drops (frontend reconnects automatically)
       '/ws': {
-        target:      'ws://localhost:8000',
+        target:       'ws://localhost:8000',
         changeOrigin: true,
         ws:           true,
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            // ECONNABORTED / ECONNRESET just means the backend closed the socket
+            // (restart, reload, or client navigated away). Swallow it silently —
+            // useWebSocket.js handles reconnection with exponential back-off.
+            if (['ECONNABORTED', 'ECONNRESET', 'EPIPE'].includes(err.code)) return
+            console.error('[ws proxy]', err.message)
+          })
+        },
       },
     },
   },

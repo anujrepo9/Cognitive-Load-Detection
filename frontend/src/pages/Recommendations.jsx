@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
 import {
   Coffee, Droplets, Focus, Type, BellOff, Scissors, TrendingDown,
@@ -26,7 +27,7 @@ export default function Recommendations() {
   const [acked,    setAcked]    = useState(new Set())
   const [completed, setCompleted] = useState(new Set())
 
-  useEffect(() => {
+  useAuthFetch(() => {
     dashboardAPI.recommendation()
       .then(({ data }) => setRecs(data.recommendations || []))
       .catch((err) => setError(getErrorMessage(err, "Could not load recommendations.")))

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
 import { Download, Loader2, AlertCircle } from "lucide-react"
 import { reportsAPI, getErrorMessage } from "../services/api"
@@ -98,7 +99,7 @@ export default function Reports() {
   const [exporting,setExporting]= useState(false)
   const [exportErr,setExportErr]= useState(null)
 
-  useEffect(() => {
+  useAuthFetch(() => {
     setLoading(true)
     Promise.all([reportsAPI.daily(14), reportsAPI.weekly(8)])
       .then(([d, w]) => { setDaily(d.data.days); setWeekly(w.data.weeks) })

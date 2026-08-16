@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
 import { Save, Bell, Shield, Cpu, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
 import { settingsAPI, getErrorMessage } from "../services/api"
@@ -41,7 +42,7 @@ export default function Settings() {
   const [saved,         setSaved]      = useState(false)
   const [error,         setError]      = useState(null)
 
-  useEffect(() => {
+  useAuthFetch(() => {
     settingsAPI.get()
       .then(({ data }) => {
         setTracking(data.tracking_enabled ?? true)
@@ -52,7 +53,7 @@ export default function Settings() {
       })
       .catch((err) => setError(getErrorMessage(err, "Could not load settings.")))
       .finally(() => setLoading(false))
-  }, []) // eslint-disable-line
+  }, [])
 
   const save = async () => {
     setSaving(true); setError(null)
