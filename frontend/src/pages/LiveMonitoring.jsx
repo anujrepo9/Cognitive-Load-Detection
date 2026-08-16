@@ -35,7 +35,10 @@ const tooltipStyle = {
 }
 
 export default function LiveMonitoring() {
-  const { websocketStatus: status, prediction, session, trackingState } = useTracking()
+  // Pull `quality` from TrackingContext — it holds live keyEvents and mouseEvents
+  // counts updated every second directly from the tracker buffer, so they show
+  // real numbers even before the first prediction fires.
+  const { websocketStatus: status, prediction, session, trackingState, quality } = useTracking()
   const connected = status === "connected"
 
   const [history,     setHistory]     = useState([])
@@ -44,7 +47,6 @@ export default function LiveMonitoring() {
   const [confidence,  setConfidence]  = useState(0)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [elapsed,     setElapsed]     = useState(0)
-  const [mouseEvents, setMouseEvents] = useState(0)
 
   // Session timer
   useEffect(() => {
@@ -66,11 +68,16 @@ export default function LiveMonitoring() {
     setLastUpdated(new Date())
     setHistory((prev) => [...prev.slice(-29), { time, score: Math.round(conf * 100) }])
     setWpmHistory((prev) => [...prev.slice(-29), { time, wpm: prediction.typing_wpm ?? 0 }])
-    setMouseEvents((n) => n + 3)
   }, [prediction])
 
-  const wsUI  = STATUS_UI[status] || STATUS_UI.offline
+  const wsUI   = STATUS_UI[status] || STATUS_UI.offline
   const WsIcon = wsUI.icon
+
+  // Live mouse event count comes directly from the tracker buffer via quality,
+  // so it reflects real activity even before the first prediction is sent.
+  const liveMouseEvents = quality?.mouseEvents ?? 0
+  // Show WPM from the last prediction, or "—" if none yet
+  const liveWpm = wpmHistory.length ? wpmHistory[wpmHistory.length - 1].wpm : "—"
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
@@ -103,15 +110,14 @@ export default function LiveMonitoring() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Confidence"   value={confidence}    unit="%" icon={Zap}
+        <StatCard label="Confidence"   value={confidence}            unit="%" icon={Zap}
           accent="primary"  sub="Model prediction confidence" />
-        <StatCard label="Session time" value={formatDuration(elapsed)} icon={Timer}
+        <StatCard label="Session time" value={formatDuration(elapsed)}        icon={Timer}
           accent="accent"   sub="Time since tracking started" />
-        <StatCard label="Typing WPM"
-          value={wpmHistory.length ? wpmHistory[wpmHistory.length - 1].wpm : "—"}
-          icon={Keyboard} accent="success" sub="Live words per minute" />
-        <StatCard label="Mouse events" value={mouseEvents} icon={MousePointerClick}
-          accent="warning"  sub="Approximate click and move count" />
+        <StatCard label="Typing WPM"   value={liveWpm}                        icon={Keyboard}
+          accent="success"  sub="Live words per minute" />
+        <StatCard label="Mouse events" value={liveMouseEvents}                icon={MousePointerClick}
+          accent="warning"  sub="Clicks and moves this interval" />
       </div>
 
       {/* Offline banner */}

@@ -52,8 +52,8 @@ api.interceptors.response.use(
     //  • Already retried
     //  • This is the refresh/logout endpoint itself
     if (!_isAuthError(status) || original._retried || _isAuthRoute(original.url)) {
-      // If the refresh call itself failed, wipe the session
-      if (_isAuthRoute(original.url)) _clearSession()
+      // Only wipe the session if the refresh endpoint itself failed (not logout)
+      if (original.url?.includes("/auth/refresh")) _clearSession()
       return Promise.reject(err)
     }
 
@@ -93,6 +93,7 @@ api.interceptors.response.use(
       api.defaults.headers.common.Authorization = `Bearer ${newAccess}`
 
       _processQueue(null, newAccess)
+      original.headers = original.headers ?? {}
       original.headers.Authorization = `Bearer ${newAccess}`
       return api(original)
     } catch (refreshErr) {

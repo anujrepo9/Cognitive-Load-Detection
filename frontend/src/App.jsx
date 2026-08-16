@@ -21,17 +21,25 @@ import TrackingConsentDialog from "./components/tracking/TrackingConsentDialog"
 function ProtectedLayout() {
   const { isAuth } = useAuth()
   if (!isAuth) return <Navigate to="/login" replace />
+
+  // TrackingProvider is mounted here — inside ProtectedLayout — so it only
+  // renders after AuthProvider has confirmed the token is valid (ready=true,
+  // isAuth=true). This prevents TrackingContext from firing API calls before
+  // the Authorization header is primed, which was causing the 403 "Not
+  // authenticated" errors on hard page reload.
   return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-slate-950">
-      <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopNav />
-        <main id="main-content" className="flex-1 overflow-y-auto" tabIndex={-1}>
-          <Outlet />
-        </main>
-        <TrackingConsentDialog />
+    <TrackingProvider>
+      <div className="flex min-h-screen bg-gray-50 dark:bg-slate-950">
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <TopNav />
+          <main id="main-content" className="flex-1 overflow-y-auto" tabIndex={-1}>
+            <Outlet />
+          </main>
+          <TrackingConsentDialog />
+        </div>
       </div>
-    </div>
+    </TrackingProvider>
   )
 }
 
@@ -47,33 +55,31 @@ export default function App() {
       <AuthProvider>
         <ToastProvider>
           <BrowserRouter>
-            <TrackingProvider>
-              {/* Skip-to-content link for keyboard users */}
-              <a href="#main-content"
-                className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999]
-                  focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-xl
-                  focus:shadow-lg focus:text-sm focus:font-semibold">
-                Skip to main content
-              </a>
-              <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route element={<GuestLayout />}>
-                  <Route path="/login"    element={<Login />} />
-                  <Route path="/register" element={<Register />} />
-                </Route>
-                <Route element={<ProtectedLayout />}>
-                  <Route path="/dashboard"       element={<Dashboard />} />
-                  <Route path="/live"            element={<LiveMonitoring />} />
-                  <Route path="/history"         element={<History />} />
-                  <Route path="/analytics"       element={<Analytics />} />
-                  <Route path="/reports"         element={<Reports />} />
-                  <Route path="/recommendations" element={<Recommendations />} />
-                  <Route path="/settings"        element={<Settings />} />
-                  <Route path="/profile"         element={<Profile />} />
-                </Route>
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </TrackingProvider>
+            {/* Skip-to-content link for keyboard users */}
+            <a href="#main-content"
+              className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999]
+                focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-xl
+                focus:shadow-lg focus:text-sm focus:font-semibold">
+              Skip to main content
+            </a>
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route element={<GuestLayout />}>
+                <Route path="/login"    element={<Login />} />
+                <Route path="/register" element={<Register />} />
+              </Route>
+              <Route element={<ProtectedLayout />}>
+                <Route path="/dashboard"       element={<Dashboard />} />
+                <Route path="/live"            element={<LiveMonitoring />} />
+                <Route path="/history"         element={<History />} />
+                <Route path="/analytics"       element={<Analytics />} />
+                <Route path="/reports"         element={<Reports />} />
+                <Route path="/recommendations" element={<Recommendations />} />
+                <Route path="/settings"        element={<Settings />} />
+                <Route path="/profile"         element={<Profile />} />
+              </Route>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
           </BrowserRouter>
         </ToastProvider>
       </AuthProvider>

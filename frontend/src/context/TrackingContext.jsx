@@ -30,7 +30,7 @@ export function TrackingProvider({ children }) {
     try {
       const [settingsResult, sessionResult] = await Promise.allSettled([settingsAPI.get(), sessionAPI.current()])
       if (settingsResult.status === "rejected") throw settingsResult.reason
-      setFlushIntervalMs((settingsResult.value.data?.flush_interval_sec || DEFAULT_FLUSH_MS) * 1000)
+      setFlushIntervalMs((settingsResult.value.data?.flush_interval_sec || DEFAULT_FLUSH_MS / 1000) * 1000)
       if (sessionResult.status === "fulfilled") {
         setSession(sessionResult.value.data)
       } else {

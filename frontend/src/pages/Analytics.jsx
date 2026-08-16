@@ -50,9 +50,18 @@ export default function Analytics() {
   const load = useCallback((h) => {
     setLoading(true)
     setError(null)
-    Promise.all([analyticsAPI.trends(h, 500), analyticsAPI.features()])
-      .then(([tRes, fRes]) => { setTrends(tRes.data); setFeatures(fRes.data) })
-      .catch((err) => setError(getErrorMessage(err, "Could not load analytics data.")))
+    Promise.allSettled([analyticsAPI.trends(h, 500), analyticsAPI.features()])
+      .then(([tRes, fRes]) => {
+        if (tRes.status === "fulfilled") {
+          setTrends(tRes.value.data)
+        } else {
+          setError(getErrorMessage(tRes.reason, "Could not load analytics trends."))
+        }
+        if (fRes.status === "fulfilled") {
+          setFeatures(fRes.value.data)
+        }
+        // features endpoint failing is non-fatal — charts still render without it
+      })
       .finally(() => setLoading(false))
   }, [])
 

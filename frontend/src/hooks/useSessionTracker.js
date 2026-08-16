@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef } from "react"
 import { behaviorAPI } from "../services/api"
 
-const MIN_KEY_EVENTS = 5
+// Minimum key events required before a keyboard-driven flush is sent.
+// Lowered from 5 → 2 so predictions fire much sooner after the user starts typing.
+const MIN_KEY_EVENTS = 2
+
+// If the user has no keyboard activity but has significant mouse activity,
+// flush anyway so mouse-only sessions still produce predictions.
+const MIN_MOUSE_EVENTS_FOR_FLUSH = 10
 
 export function useSessionTracker({ active, flushIntervalMs, onPrediction, onQualityChange, onError }) {
   const buffer = useRef({ keyEvents: [], mouseEvents: [], scrollEvents: [], sessionStart: Date.now() })
@@ -44,26 +50,66 @@ export function useSessionTracker({ active, flushIntervalMs, onPrediction, onQua
 
   const extractFeatures = useCallback(() => {
     const { keyEvents, mouseEvents, scrollEvents, sessionStart } = buffer.current
-    if (keyEvents.length < MIN_KEY_EVENTS) return null
+
+    // Require either enough key events OR enough mouse events to flush.
+    // Previously only key events were checked, so mouse-only sessions never produced predictions.
+    const hasKeyData   = keyEvents.length >= MIN_KEY_EVENTS
+    const hasMouseData = mouseEvents.filter((e) => e.speed != null).length >= MIN_MOUSE_EVENTS_FOR_FLUSH
+    if (!hasKeyData && !hasMouseData) return null
+
     const minutes = (Date.now() - sessionStart) / 60_000
     const holds = keyEvents.map((event) => event.holdTime)
     const flights = keyEvents.map((event) => event.flightTime).filter(Boolean)
     const errors = keyEvents.filter((event) => event.isError).length
     const words = keyEvents.filter((event) => event.isSpace).length
     const averageHold = average(holds)
-    const variation = standardDeviation(holds) / (averageHold || 1)
+    const variation = holds.length > 1 ? standardDeviation(holds) / (averageHold || 1) : 0
     const speeds = mouseEvents.filter((event) => event.speed != null).map((event) => event.speed)
     const clicks = mouseEvents.filter((event) => event.type === "click").length
     const distance = mouseEvents.reduce((total, event) => total + (event.distance || 0), 0)
     const pauses = keyEvents.slice(1).map((event, index) => event.timestamp - keyEvents[index].timestamp).filter((gap) => gap > 2000)
-    return { typing_wpm: minutes > 0 ? Math.round(words / minutes) : 0, avg_hold_ms: Math.round(averageHold), avg_flight_ms: Math.round(average(flights)), error_rate: Number((errors / keyEvents.length).toFixed(4)), pause_count: pauses.length, avg_pause_ms: Math.round(average(pauses)), typing_variance: Number(variation.toFixed(4)), chars_per_min: minutes > 0 ? Math.round(keyEvents.length / minutes) : 0, avg_cursor_speed: Math.round(average(speeds)), click_rate: minutes > 0 ? Number((clicks / minutes).toFixed(2)) : 0, double_click_rate: 0, scroll_rate: minutes > 0 ? Number((scrollEvents.length / minutes).toFixed(2)) : 0, idle_time_pct: Number(Math.min(totalIdle.current / ((Date.now() - sessionStart) || 1), 0.95).toFixed(4)), avg_hover_ms: 0, movement_distance: Math.round(distance), movement_smoothness: Number(Math.max(0.1, Math.min(1, 1 - variation)).toFixed(4)) }
+    return {
+      typing_wpm:          minutes > 0 ? Math.round(words / minutes) : 0,
+      avg_hold_ms:         Math.round(averageHold),
+      avg_flight_ms:       Math.round(average(flights)),
+      error_rate:          keyEvents.length > 0 ? Number((errors / keyEvents.length).toFixed(4)) : 0,
+      pause_count:         pauses.length,
+      avg_pause_ms:        Math.round(average(pauses)),
+      typing_variance:     Number(variation.toFixed(4)),
+      chars_per_min:       minutes > 0 ? Math.round(keyEvents.length / minutes) : 0,
+      avg_cursor_speed:    Math.round(average(speeds)),
+      click_rate:          minutes > 0 ? Number((clicks / minutes).toFixed(2)) : 0,
+      double_click_rate:   0,
+      scroll_rate:         minutes > 0 ? Number((scrollEvents.length / minutes).toFixed(2)) : 0,
+      idle_time_pct:       Number(Math.min(totalIdle.current / ((Date.now() - sessionStart) || 1), 0.95).toFixed(4)),
+      avg_hover_ms:        0,
+      movement_distance:   Math.round(distance),
+      movement_smoothness: Number(Math.max(0.1, Math.min(1, 1 - variation)).toFixed(4)),
+    }
   }, [])
-  const resetBuffer = useCallback(() => { buffer.current.keyEvents = []; buffer.current.mouseEvents = []; buffer.current.scrollEvents = []; totalIdle.current = 0; reportQuality() }, [reportQuality])
+
+  const resetBuffer = useCallback(() => {
+    buffer.current.keyEvents = []
+    buffer.current.mouseEvents = []
+    buffer.current.scrollEvents = []
+    totalIdle.current = 0
+    reportQuality()
+  }, [reportQuality])
+
   const flush = useCallback(async () => {
     const features = extractFeatures()
     if (!features) return false
-    try { const { data } = await behaviorAPI.predict(features); callbacks.current.onPrediction?.({ ...data, typing_wpm: features.typing_wpm }); resetBuffer(); return true }
-    catch { callbacks.current.onError?.("Could not send this activity window. Check your connection and retry."); return false }
+    // Reset buffer before the API call so stale events don't accumulate
+    // if the request is slow or fails.
+    resetBuffer()
+    try {
+      const { data } = await behaviorAPI.predict(features)
+      callbacks.current.onPrediction?.({ ...data, typing_wpm: features.typing_wpm })
+      return true
+    } catch {
+      callbacks.current.onError?.("Could not send this activity window. Check your connection and retry.")
+      return false
+    }
   }, [extractFeatures, resetBuffer])
 
   useEffect(() => {
@@ -72,9 +118,23 @@ export function useSessionTracker({ active, flushIntervalMs, onPrediction, onQua
     reportQuality()
     const qualityTimer = setInterval(reportQuality, 1000)
     const flushTimer = setInterval(flush, flushIntervalMs)
-    window.addEventListener("keydown", onKeyDown); window.addEventListener("keyup", onKeyUp); window.addEventListener("mousemove", onMouseMove); window.addEventListener("mousedown", onMouseDown); window.addEventListener("wheel", onWheel, { passive: true })
-    return () => { clearInterval(qualityTimer); clearInterval(flushTimer); window.removeEventListener("keydown", onKeyDown); window.removeEventListener("keyup", onKeyUp); window.removeEventListener("mousemove", onMouseMove); window.removeEventListener("mousedown", onMouseDown); window.removeEventListener("wheel", onWheel); clearTimeout(idleTimer.current) }
+    window.addEventListener("keydown", onKeyDown)
+    window.addEventListener("keyup", onKeyUp)
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mousedown", onMouseDown)
+    window.addEventListener("wheel", onWheel, { passive: true })
+    return () => {
+      clearInterval(qualityTimer)
+      clearInterval(flushTimer)
+      window.removeEventListener("keydown", onKeyDown)
+      window.removeEventListener("keyup", onKeyUp)
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mousedown", onMouseDown)
+      window.removeEventListener("wheel", onWheel)
+      clearTimeout(idleTimer.current)
+    }
   }, [active, flushIntervalMs, flush, onKeyDown, onKeyUp, onMouseMove, onMouseDown, onWheel, reportQuality])
+
   return { flush }
 }
 
