@@ -95,7 +95,7 @@ export default function Profile() {
           </div>
         )}
 
-        <div className="space-y-4">
+        <form onSubmit={handleSave} noValidate className="space-y-4">
           <div>
             <label htmlFor="profile-name"
               className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
@@ -123,14 +123,14 @@ export default function Profile() {
           </div>
 
           <div className="flex justify-end">
-            <button onClick={handleSave} disabled={saving}
+            <button type="submit" disabled={saving}
               className="btn-primary" aria-disabled={saving}>
               {saving
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
                 : <><Save className="w-4 h-4" /> Save changes</>}
             </button>
           </div>
-        </div>
+        </form>
       </div>
 
       {/* Change password card */}
@@ -159,7 +159,7 @@ export default function Profile() {
           </div>
         )}
 
-        <div className="space-y-4">
+        <form onSubmit={handleChangePassword} noValidate className="space-y-4">
           <div>
             <label htmlFor="old-password"
               className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
@@ -198,14 +198,14 @@ export default function Profile() {
           </div>
 
           <div className="flex justify-end">
-            <button onClick={handleChangePassword} disabled={pwdBusy}
+            <button type="submit" disabled={pwdBusy}
               className="btn-primary" aria-disabled={pwdBusy}>
               {pwdBusy
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Updating…</>
                 : "Update password"}
             </button>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   )

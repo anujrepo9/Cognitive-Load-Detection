@@ -62,7 +62,7 @@ export default function Login() {
             </div>
           )}
 
-          <div className="space-y-4">
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             {/* Email */}
             <div>
               <label htmlFor="email"
@@ -104,14 +104,14 @@ export default function Login() {
               </div>
             </div>
 
-            <button onClick={handleSubmit} disabled={loading}
+            <button type="submit" disabled={loading}
               className="btn-primary w-full justify-center mt-2"
               aria-disabled={loading}>
               {loading
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing in…</>
                 : "Sign in"}
             </button>
-          </div>
+          </form>
 
           <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
             No account?{" "}

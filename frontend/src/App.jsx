@@ -46,8 +46,8 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <ToastProvider>
-          <TrackingProvider>
-            <BrowserRouter>
+          <BrowserRouter>
+            <TrackingProvider>
               {/* Skip-to-content link for keyboard users */}
               <a href="#main-content"
                 className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999]
@@ -73,8 +73,8 @@ export default function App() {
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
-            </BrowserRouter>
-          </TrackingProvider>
+            </TrackingProvider>
+          </BrowserRouter>
         </ToastProvider>
       </AuthProvider>
     </ThemeProvider>
