@@ -41,7 +41,7 @@ export default function LiveMonitoring() {
   const [history,     setHistory]     = useState([])
   const [wpmHistory,  setWpmHistory]  = useState([])
   const [loadLevel,   setLoadLevel]   = useState("unknown")
-  const [confidence,  setConfidence]  = useState(0)
+  const [confidence,  setConfidence]  = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [elapsed,     setElapsed]     = useState(0)
   // Track the most recently seen WPM so the stat card shows a live value
@@ -67,18 +67,21 @@ export default function LiveMonitoring() {
     setLastUpdated(new Date())
     setHistory((prev) => [...prev.slice(-29), { time, score: Math.round(conf * 100) }])
 
-    // Only update WPM history and latest value when a real WPM is present
-    if (typing_wpm != null) {
+    // Only update WPM history and latest value when a meaningful WPM is present.
+    // null means not enough data yet; 0 is also not useful to display or chart.
+    if (typing_wpm != null && typing_wpm > 0) {
       setLatestWpm(typing_wpm)
       setWpmHistory((prev) => [...prev.slice(-29), { time, wpm: typing_wpm }])
     }
   }, [prediction])
 
-  // Reset WPM display when tracking stops
+  // Reset display values when tracking stops
   useEffect(() => {
     if (trackingState === "idle") {
       setLatestWpm(null)
       setWpmHistory([])
+      setConfidence(null)
+      setLoadLevel("unknown")
     }
   }, [trackingState])
 
@@ -119,7 +122,7 @@ export default function LiveMonitoring() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Confidence"   value={confidence}            unit="%" icon={Zap}
+        <StatCard label="Confidence"   value={confidence != null ? confidence : "—"} unit={confidence != null ? "%" : ""} icon={Zap}
           accent="primary"  sub="Model prediction confidence" />
         <StatCard label="Session time" value={formatDuration(elapsed)}        icon={Timer}
           accent="accent"   sub="Time since tracking started" />

@@ -54,7 +54,22 @@ export function TrackingProvider({ children }) {
     window.addEventListener("offline", goOffline)
     return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline) }
   }, [refreshStatus])
-  useEffect(() => { if (websocketPrediction) setPrediction(websocketPrediction) }, [websocketPrediction])
+  useEffect(() => {
+    if (websocketPrediction) {
+      // The backend re-broadcasts typing_wpm from payload.typing_wpm, but the
+      // frontend sends 0 (not null) when there isn't enough data — so a WS value
+      // of 0 means "no real reading", not "actually 0 WPM". Only trust a positive
+      // WS value; otherwise keep the last meaningful value from the HTTP flush
+      // (which carries the true null-vs-real-number distinction via displayWpm).
+      const wsWpm = (websocketPrediction.typing_wpm != null && websocketPrediction.typing_wpm > 0)
+        ? websocketPrediction.typing_wpm
+        : null
+      setPrediction((prev) => ({
+        ...websocketPrediction,
+        typing_wpm: wsWpm ?? prev?.typing_wpm ?? null,
+      }))
+    }
+  }, [websocketPrediction])
   useEffect(() => {
     if (!isAuth) {
       setTrackingState("idle"); setSession(null); setPrediction(null); setError(null); setConsentOpen(false)

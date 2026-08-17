@@ -71,11 +71,24 @@ export function useSessionTracker({ active, flushIntervalMs, onPrediction, onQua
     const distance = mouseEvents.reduce((total, event) => total + (event.distance || 0), 0)
     const pauses = keyEvents.slice(1).map((event, index) => event.timestamp - keyEvents[index].timestamp).filter((gap) => gap > 2000)
 
-    // WPM is words-in-this-interval / minutes-in-this-interval
-    const wpm = intervalMinutes > 0 ? Math.round(words / intervalMinutes) : 0
+    // WPM is words-in-this-interval / minutes-in-this-interval.
+    // Require at least 3 words AND at least 10 seconds in the interval so that
+    // a single space pressed right after tracking starts doesn't produce an
+    // astronomically large (or meaningless) WPM value.
+    const MIN_WORDS_FOR_WPM    = 3
+    const MIN_INTERVAL_MINUTES = 10 / 60  // 10 seconds
+    const wpm =
+      words >= MIN_WORDS_FOR_WPM && intervalMinutes >= MIN_INTERVAL_MINUTES
+        ? Math.round(words / intervalMinutes)
+        : null
 
     return {
-      typing_wpm:          wpm,
+      // Backend BehaviorPayload.typing_wpm is `int = 0` (not Optional) — send 0
+      // when we don't have enough data rather than null, which causes a 422.
+      // The separate _wpm_display field carries the true null so the UI can show
+      // "—" instead of "0" until there's a real reading.
+      typing_wpm:          wpm ?? 0,
+      _wpm_display:        wpm,   // null = not enough data yet; used by flush() below
       avg_hold_ms:         Math.round(averageHold),
       avg_flight_ms:       Math.round(average(flights)),
       error_rate:          keyEvents.length > 0 ? Number((errors / keyEvents.length).toFixed(4)) : 0,
@@ -107,15 +120,19 @@ export function useSessionTracker({ active, flushIntervalMs, onPrediction, onQua
   const flush = useCallback(async () => {
     const features = extractFeatures()
     if (!features) return false
-    // Snapshot WPM before resetting the buffer
-    const flushWpm = features.typing_wpm
+    // _wpm_display is null when there isn't enough data for a meaningful WPM.
+    // Use it for the UI callback so the stat card shows "—" rather than "0".
+    const displayWpm = features._wpm_display
+    // Strip _wpm_display before sending — it's a UI-only field, not part of
+    // BehaviorPayload. The backend receives typing_wpm as int (0 when no data).
+    const { _wpm_display, ...apiPayload } = features
     // Reset buffer before the API call so stale events don't accumulate
     resetBuffer()
     try {
-      const { data } = await behaviorAPI.predict(features)
-      // Merge WPM from the local features since the HTTP PredictionResponse
-      // schema does not include typing_wpm in its response body.
-      callbacks.current.onPrediction?.({ ...data, typing_wpm: flushWpm })
+      const { data } = await behaviorAPI.predict(apiPayload)
+      // Merge the display WPM (which may be null) from local features since the
+      // HTTP PredictionResponse schema does not include typing_wpm in its response body.
+      callbacks.current.onPrediction?.({ ...data, typing_wpm: displayWpm })
       return true
     } catch {
       callbacks.current.onError?.("Could not send this activity window. Check your connection and retry.")
