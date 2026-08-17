@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search, Bell, Sun, Moon, X, CheckCircle2, AlertTriangle, BrainCircuit,
@@ -168,12 +168,15 @@ export default function TopNav() {
           </AnimatePresence>
         </div>
 
-        {/* Avatar */}
-        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-accent
-          flex items-center justify-center text-white text-sm font-semibold
-          shadow-glow-primary select-none" aria-hidden="true">
+        {/* Avatar → Profile */}
+        <Link to="/profile"
+          className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-accent
+            flex items-center justify-center text-white text-sm font-semibold
+            shadow-glow-primary select-none hover:opacity-90 transition-opacity
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          aria-label="Go to Profile">
           {(user?.name?.[0] || "U").toUpperCase()}
-        </div>
+        </Link>
       </div>
 
       {/* Search modal */}

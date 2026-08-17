@@ -77,7 +77,10 @@ function SidebarContent({ user, onLogout, collapsed, onNavClick }) {
       <div className="flex items-center justify-between px-4 h-16 border-b
         border-gray-100 dark:border-slate-800 shrink-0">
         {!collapsed && (
-          <div className="flex items-center gap-2.5">
+          <NavLink to="/dashboard" onClick={onNavClick}
+            className="flex items-center gap-2.5 rounded-lg focus-visible:outline-none
+              focus-visible:ring-2 focus-visible:ring-primary/50"
+            aria-label="Go to Dashboard">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary
               to-accent flex items-center justify-center shadow-glow-primary">
               <BrainCircuit className="w-5 h-5 text-white" aria-hidden="true" />
@@ -88,15 +91,18 @@ function SidebarContent({ user, onLogout, collapsed, onNavClick }) {
               </p>
               <p className="text-[10px] text-gray-400 mt-0.5">AI Detection</p>
             </div>
-          </div>
+          </NavLink>
         )}
         {collapsed && (
-          <div className="w-full flex justify-center">
+          <NavLink to="/dashboard" onClick={onNavClick}
+            className="w-full flex justify-center rounded-lg focus-visible:outline-none
+              focus-visible:ring-2 focus-visible:ring-primary/50"
+            aria-label="Go to Dashboard">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary
               to-accent flex items-center justify-center">
               <BrainCircuit className="w-5 h-5 text-white" aria-hidden="true" />
             </div>
-          </div>
+          </NavLink>
         )}
       </div>
 
