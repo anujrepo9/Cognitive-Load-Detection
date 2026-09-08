@@ -80,7 +80,7 @@ class ChangePasswordRequest(BaseModel):
 
 class BehaviorPayload(BaseModel):
     """Feature vector sent from browser or Python collector every 5 s."""
-    typing_wpm:          int   = 0
+    typing_wpm:          Optional[int] = None   # None = not enough data; 0 treated as None
     chars_per_min:       int   = 0
     avg_hold_ms:         float = 0.0
     avg_flight_ms:       float = 0.0

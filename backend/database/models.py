@@ -75,7 +75,7 @@ class BehaviorData(Base):
     created_at          = Column(DateTime(timezone=True), default=utcnow, index=True)
 
     # Keyboard features
-    typing_wpm          = Column(Integer,  default=0)
+    typing_wpm          = Column(Integer,  nullable=True, default=None)
     chars_per_min       = Column(Integer,  default=0)
     avg_hold_ms         = Column(Float,    default=0.0)
     avg_flight_ms       = Column(Float,    default=0.0)

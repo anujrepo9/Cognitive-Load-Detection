@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
 import {
   Cpu, Keyboard, MousePointerClick, Timer, Zap,
@@ -47,14 +47,44 @@ export default function LiveMonitoring() {
   // Track the most recently seen WPM so the stat card shows a live value
   const [latestWpm,   setLatestWpm]   = useState(null)
 
-  // Session timer
+  // Session timer — freeze when paused or idle.
+  // We track how many ms have been spent in the paused state so we can subtract
+  // them from the wall-clock diff (session.start_time is fixed by the backend).
+  const pausedSinceRef  = useRef(null)   // timestamp when the current pause began
+  const totalPausedMsRef = useRef(0)     // accumulated ms spent paused this session
+
   useEffect(() => {
+    if (trackingState === "idle") {
+      // Session ended — clear everything
+      pausedSinceRef.current  = null
+      totalPausedMsRef.current = 0
+      setElapsed(0)
+      return undefined
+    }
+
+    if (trackingState === "paused") {
+      // Mark the start of this pause (only once per pause transition)
+      if (pausedSinceRef.current === null) pausedSinceRef.current = Date.now()
+      // No interval needed while paused — elapsed stays frozen
+      return undefined
+    }
+
+    // trackingState === "tracking" (resumed or freshly started)
+    if (pausedSinceRef.current !== null) {
+      // We're resuming: bank the paused duration and clear the marker
+      totalPausedMsRef.current += Date.now() - pausedSinceRef.current
+      pausedSinceRef.current = null
+    }
+
+    const sessionStart = session?.start_time ? new Date(session.start_time).getTime() : null
     const tick = setInterval(() => {
-      setElapsed(session?.start_time
-        ? Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 1000))
-        : 0)
+      if (!sessionStart) { setElapsed(0); return }
+      const activeMs = Date.now() - sessionStart - totalPausedMsRef.current
+      setElapsed(Math.max(0, Math.floor(activeMs / 1000)))
     }, 1000)
     return () => clearInterval(tick)
+  // trackingState drives pause/resume transitions; session id/start guards resets
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.session_id, session?.start_time, trackingState])
 
   // React to prediction pushes (both WebSocket and HTTP response via onPrediction callback)
