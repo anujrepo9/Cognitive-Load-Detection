@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useCallback } from "react"
 import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
 import {
@@ -75,7 +75,7 @@ export default function Analytics() {
   const chartPoints = downsample(trendPoints).map((p) => ({
     time:  new Date(p.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     score: Math.round(p.confidence * 100),
-    wpm:   p.wpm ?? 0,
+    wpm:   p.wpm ?? null,
     level: p.load_level,
   }))
   const pieData = buildPieData(trendPoints)

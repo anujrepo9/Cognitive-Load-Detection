@@ -62,6 +62,9 @@ npm run dev
 
 - App: `http://localhost:5173`
 
+### Uvicorn Command
+uvicorn main:app --reload --host 0.0.0.0 --port 8000    
+
 ### One-command launcher
 
 ```bash

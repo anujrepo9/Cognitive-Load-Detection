@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import { behaviorAPI, settingsAPI } from "../services/api"
 
-const DEFAULT_FLUSH_MS = 5000
+const DEFAULT_FLUSH_MS = 15000
 
 export function useBehaviorTracker(enabled = true) {
   const buffer = useRef({
@@ -40,6 +40,7 @@ export function useBehaviorTracker(enabled = true) {
 
   const trackerEnabled = enabled && settings.loaded && settings.trackingEnabled
 
+  const windowStart = useRef(Date.now())
   const lastKey   = useRef({ key: null, downTime: null })
   const lastMouse = useRef({ x: 0, y: 0, time: Date.now() })
   const idleTimer = useRef(null)
@@ -112,7 +113,8 @@ export function useBehaviorTracker(enabled = true) {
   // ── Feature extraction ────────────────────────────────────────────────────
   const extractFeatures = useCallback(() => {
     const { keyEvents, mouseEvents, scrollEvents, sessionStart } = buffer.current
-    const elapsed = (Date.now() - sessionStart) / 1000 / 60 // minutes
+    const now = Date.now()
+    const elapsed = (now - windowStart.current) / 1000 / 60 // minutes of current window
 
     if (keyEvents.length < 5) return null
 
@@ -169,11 +171,12 @@ export function useBehaviorTracker(enabled = true) {
     } catch {
       // Graceful — don't interrupt the user; offline queue (Phase 4) handles retry
     }
-    // Reset buffers but keep session timer
+    // Reset buffers and window timer
     buffer.current.keyEvents    = []
     buffer.current.mouseEvents  = []
     buffer.current.scrollEvents = []
     totalIdle.current = 0
+    windowStart.current = Date.now()
   }, [extractFeatures])
 
   // ── Dynamic interval — re-creates when flushIntervalMs changes ───────────

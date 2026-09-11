@@ -8,12 +8,20 @@ Run: python test_collector.py
 import os, sys, time, threading, csv, tempfile
 sys.path.insert(0, os.path.dirname(__file__))
 
-from buffer import EventBuffer, KeyEvent, MouseMoveEvent, MouseHoverEvent
-from metrics import calculate
-from csv_writer import CSVWriter
-from offline_queue import PushQueue
-from config import CollectorConfig, load_config, save_config
-import secure_store
+try:
+    from collector.buffer import EventBuffer, KeyEvent, MouseMoveEvent, MouseHoverEvent
+    from collector.metrics import calculate
+    from collector.csv_writer import CSVWriter
+    from collector.offline_queue import PushQueue
+    from collector.config import CollectorConfig, load_config, save_config
+    import collector.secure_store as secure_store
+except ImportError:
+    from buffer import EventBuffer, KeyEvent, MouseMoveEvent, MouseHoverEvent
+    from metrics import calculate
+    from csv_writer import CSVWriter
+    from offline_queue import PushQueue
+    from config import CollectorConfig, load_config, save_config
+    import secure_store
 
 
 # ── Buffer tests ──────────────────────────────────────────────────────────────

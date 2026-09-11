@@ -122,7 +122,7 @@ class UserSettings(Base):
     id                   = Column(Integer, primary_key=True, index=True)
     user_id              = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
     tracking_enabled     = Column(Boolean, default=True)
-    flush_interval_sec   = Column(Integer, default=5)
+    flush_interval_sec   = Column(Integer, default=15)
     notifications_enabled= Column(Boolean, default=True)
     theme                = Column(String(20), default="system")   # light | dark | system
     updated_at           = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

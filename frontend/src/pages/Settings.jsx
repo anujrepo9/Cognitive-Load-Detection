@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
 import { Save, Bell, Shield, Cpu, Loader2, CheckCircle2, AlertCircle } from "lucide-react"

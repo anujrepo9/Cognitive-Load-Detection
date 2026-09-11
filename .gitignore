@@ -45,3 +45,4 @@ npm-debug.log*
 # Models
 models/hand_landmarker.task
 
+SECRET.MD
