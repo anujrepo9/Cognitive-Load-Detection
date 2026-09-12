@@ -13,14 +13,17 @@
  */
 import { useState, useEffect, useRef, useCallback } from "react"
 
-// When VITE_API_URL is not set we're in dev and all traffic goes through the
-// Vite proxy on the same origin.  We must derive the WS base from the
-// *browser* origin, not a hardcoded localhost URL, so the WebSocket handshake
-// also passes through the proxy (which forwards it to localhost:8000).
+// Treat VITE_API_URL as "unset" when it points at localhost — that means the
+// dev is running via the Vite proxy and all traffic (including WebSocket)
+// must stay on the same origin so the proxy can forward it.  Only use the
+// explicit URL for real production deployments (non-localhost host).
 const _apiUrl = import.meta.env.VITE_API_URL
-const WS_BASE = _apiUrl
-  ? _apiUrl.replace(/^http/, "ws")          // explicit prod URL → swap scheme
-  : `${window.location.origin.replace(/^http/, "ws")}` // same-origin in dev
+const _isLocalhost = _apiUrl && /localhost|127\.0\.0\.1/.test(_apiUrl)
+const _effectiveUrl = _isLocalhost ? "" : (_apiUrl || "")
+
+const WS_BASE = _effectiveUrl
+  ? _effectiveUrl.replace(/^http/, "ws")              // production: swap scheme
+  : `${window.location.origin.replace(/^http/, "ws")}` // dev proxy: same origin
 
 const RECONNECT_BASE_MS   = 1_000   // first retry after 1 s
 const RECONNECT_MAX_MS    = 30_000  // cap at 30 s

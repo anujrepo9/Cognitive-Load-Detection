@@ -35,7 +35,7 @@ def receive_behavior(
 
     record = BehaviorData(
         session_id          = session.id,
-        typing_wpm          = payload.typing_wpm,
+        typing_wpm          = payload.typing_wpm if payload.typing_wpm else None,
         chars_per_min       = payload.chars_per_min,
         avg_hold_ms         = payload.avg_hold_ms,
         avg_flight_ms       = payload.avg_flight_ms,

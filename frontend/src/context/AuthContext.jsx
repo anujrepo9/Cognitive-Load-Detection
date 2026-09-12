@@ -4,7 +4,10 @@ import { authAPI } from "../services/api"
 
 const AuthContext = createContext(null)
 
-const BASE = import.meta.env.VITE_API_URL || ""
+// Must match the BASE in api.js: blank or localhost VITE_API_URL → "/api" for the Vite proxy.
+const _rawApiUrl = import.meta.env.VITE_API_URL
+const _isLocalhost = _rawApiUrl && /localhost|127\.0\.0\.1/.test(_rawApiUrl)
+const BASE = (!_rawApiUrl || _isLocalhost) ? "/api" : _rawApiUrl
 
 export function AuthProvider({ children }) {
   const [user,  setUser]  = useState(

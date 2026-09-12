@@ -1,6 +1,12 @@
 import axios from "axios"
 
-const BASE = import.meta.env.VITE_API_URL || ""
+// In production, VITE_API_URL is set to the real backend URL (e.g. https://api.yourapp.com).
+// In development it should be blank — traffic goes through the Vite proxy.
+// Guard: if someone mistakenly sets VITE_API_URL to a localhost address in dev,
+// treat it the same as unset so the proxy is used and CORS is avoided.
+const _rawApiUrl = import.meta.env.VITE_API_URL
+const _isLocalhost = _rawApiUrl && /localhost|127\.0\.0\.1/.test(_rawApiUrl)
+const BASE = (!_rawApiUrl || _isLocalhost) ? "/api" : _rawApiUrl
 
 const api = axios.create({ baseURL: BASE, timeout: 10000 })
 
