@@ -75,7 +75,7 @@ def calculate(state: BufferState, window_sec: float) -> dict:
     avg_accel = round(_avg(accel), 2)
 
     # Phase 4: hover-time (dwell) between mousedown and mouseup
-    hover_ms = [h.duration_ms for h in state.hovers]
+    hover_ms  = [h.duration_ms for h in getattr(state, "hovers", [])]
     avg_hover = round(_avg(hover_ms), 2)
 
     # ── Idle ─────────────────────────────────────────────────────────────────

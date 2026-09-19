@@ -2,7 +2,7 @@
     "api_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzg2NTQ5NTA5fQ.I4E6IEfo8pREWAcnE7qDpUzbJTrY6mIjE2H7_fnBry0",
     "api_url": "http://localhost:8000",
     "daemon": false,
-    "flush_interval": 60.0,
+    "flush_interval": 30.0,
     "offline_mode": true,
     "online_predict": false,
     "start_on_login": true

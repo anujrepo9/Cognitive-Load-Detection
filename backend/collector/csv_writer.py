@@ -24,15 +24,24 @@ class CSVWriter:
 
         file_exists = self.path.exists() and self.path.stat().st_size > 0
 
-        # Open once in append mode — stays open for the whole session
+        # ── Migrate stale header if columns changed ───────────────────────
+        if file_exists:
+            with open(self.path, "r", newline="", encoding="utf-8") as f:
+                existing_header = f.readline().strip().split(",")
+            if existing_header != COLUMNS:
+                # Rename old file, start fresh so header is always correct
+                backup = self.path.with_suffix(".bak.csv")
+                self.path.rename(backup)
+                print(f"  [csv_writer] Column mismatch — old data backed up to {backup.name}")
+                file_exists = False
+
         self._file = open(self.path, "a", newline="", encoding="utf-8")
         self._writer = csv.DictWriter(
             self._file, fieldnames=COLUMNS, extrasaction="ignore"
         )
-
         if not file_exists:
             self._writer.writeheader()
-            self._file.flush()
+            self._file.flush()    
 
     def write(self, row: dict):
         """Append one summary row. Only the columns in COLUMNS are written."""

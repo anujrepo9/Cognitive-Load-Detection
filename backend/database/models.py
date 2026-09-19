@@ -92,6 +92,7 @@ class BehaviorData(Base):
     scroll_rate         = Column(Float,    default=0.0)
     idle_time_pct       = Column(Float,    default=0.0)
     avg_hover_ms        = Column(Float,    default=0.0)
+    avg_acceleration    = Column(Float,    default=0.0)
     movement_smoothness = Column(Float,    default=0.0)
 
     session = relationship("Session", back_populates="behaviors")

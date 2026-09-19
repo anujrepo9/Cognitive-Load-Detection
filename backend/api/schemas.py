@@ -95,6 +95,7 @@ class BehaviorPayload(BaseModel):
     scroll_rate:         float = 0.0
     idle_time_pct:       float = 0.0
     avg_hover_ms:        float = 0.0
+    avg_acceleration:    float = 0.0
     movement_smoothness: float = 0.0
 
 
