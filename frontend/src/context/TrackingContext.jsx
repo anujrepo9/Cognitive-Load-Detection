@@ -33,11 +33,19 @@ export function TrackingProvider({ children }) {
       setFlushIntervalMs((settingsResult.value.data?.flush_interval_sec || DEFAULT_FLUSH_MS / 1000) * 1000)
       if (sessionResult.status === "fulfilled") {
         setSession(sessionResult.value.data)
+        // Restore tracking state so the UI reflects the active session in every
+        // tab (e.g. when the user opens a new tab while a session is running).
+        // Only promote from "idle" — never interrupt a start/pause/end transition.
+        setTrackingState((prev) => prev === "idle" ? "tracking" : prev)
       } else {
         // 404 simply means no active session — that is not a backend error
         const status = sessionResult.reason?.response?.status
         if (status !== 404) throw sessionResult.reason
         setSession(null)
+        // Ensure idle when backend confirms no active session
+        setTrackingState((prev) =>
+          ["starting", "ending"].includes(prev) ? prev : "idle"
+        )
       }
       setBackendStatus("online")
     } catch {

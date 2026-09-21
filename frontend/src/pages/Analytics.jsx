@@ -195,12 +195,12 @@ export default function Analytics() {
           {/* WPM trend */}
           <ChartCard title="Typing speed over time"
             subtitle="Words per minute — lower WPM may correlate with higher cognitive load" icon={TrendingUp}>
-            {chartPoints.filter((p) => p.wpm > 0).length < 2 ? (
+            {chartPoints.filter((p) => p.wpm > 0).length < 1 ? (
               <EmptyState icon={TrendingUp} title="No WPM data yet"
                 description="Keep typing during sessions to see your WPM trend." />
             ) : (
               <ResponsiveContainer width="100%" height={240}>
-                <AreaChart data={chartPoints}>
+                <AreaChart data={chartPoints.filter((p) => p.wpm > 0)}>
                   <defs>
                     <linearGradient id="wpmGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#10B981" stopOpacity={0.3} />

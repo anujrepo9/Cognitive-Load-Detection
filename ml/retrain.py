@@ -25,7 +25,7 @@ FEATURE_ORDER = [
     "typing_wpm", "chars_per_min", "avg_hold_ms", "avg_flight_ms",
     "error_rate", "pause_count", "avg_pause_ms", "typing_variance",
     "avg_cursor_speed", "movement_distance", "click_rate", "double_click_rate",
-    "scroll_rate", "idle_time_pct", "avg_hover_ms", "movement_smoothness",
+    "scroll_rate", "idle_time_pct", "avg_hover_ms", "avg_acceleration", "movement_smoothness",
 ]
 LABEL_COL    = "label"
 SYNTHETIC_CSV = Path("ml/datasets/train.csv")
@@ -48,7 +48,7 @@ def extract_from_db(db_path: Path) -> pd.DataFrame:
             b.error_rate, b.pause_count, b.avg_pause_ms, b.typing_variance,
             b.avg_cursor_speed, b.movement_distance, b.click_rate,
             b.double_click_rate, b.scroll_rate, b.idle_time_pct,
-            b.avg_hover_ms, b.movement_smoothness,
+            b.avg_hover_ms, b.avg_acceleration, b.movement_smoothness,
             p.load_level AS label
         FROM behavior_data b
         JOIN predictions p ON p.behavior_id = b.id
@@ -113,7 +113,7 @@ def retrain(
     print(f"\nRetrain complete — accuracy: {acc:.4f}")
 
     # Invalidate the singleton so next request reloads the new model
-    import services.predictor as pred_module
+    from ..backend.services import predictor as pred_module
     pred_module._predictor = None
     print("Predictor singleton reset — next request will load new model.")
 

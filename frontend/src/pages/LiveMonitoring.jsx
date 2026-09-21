@@ -46,6 +46,9 @@ export default function LiveMonitoring() {
   const [elapsed,     setElapsed]     = useState(0)
   // Track the most recently seen WPM so the stat card shows a live value
   const [latestWpm,   setLatestWpm]   = useState(null)
+  // Cumulative key count across all flush intervals this session
+
+  const prevKeyEvents = useRef(0)
 
   // Session timer — freeze when paused or idle.
   // We track how many ms have been spent in the paused state so we can subtract
@@ -119,8 +122,17 @@ export default function LiveMonitoring() {
   const WsIcon = wsUI.icon
 
   const liveMouseEvents = quality?.mouseEvents ?? 0
+  const totalKeys = quality?.totalKeys ?? 0
   // Show the most recent WPM value, or "—" if tracking hasn't produced one yet
   const liveWpm = latestWpm != null ? latestWpm : "—"
+
+  // Accumulate key events: quality.keyEvents resets each flush, so track delta
+  useEffect(() => {
+    const current = quality?.keyEvents ?? 0
+    if (trackingState === "idle") { setTotalKeys(0); prevKeyEvents.current = 0; return }
+    if (current < prevKeyEvents.current) setTotalKeys((t) => t + prevKeyEvents.current)
+    prevKeyEvents.current = current
+  }, [quality?.keyEvents, trackingState])
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
@@ -151,7 +163,7 @@ export default function LiveMonitoring() {
       <TrackingStatus />
 
       {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard label="Confidence"   value={confidence != null ? confidence : "—"} unit={confidence != null ? "%" : ""} icon={Zap}
           accent="primary"  sub="Model prediction confidence" />
         <StatCard label="Session time" value={formatDuration(elapsed)}        icon={Timer}
@@ -160,6 +172,8 @@ export default function LiveMonitoring() {
           accent="success"  sub="Live words per minute" />
         <StatCard label="Mouse events" value={liveMouseEvents}                icon={MousePointerClick}
           accent="warning"  sub="Clicks and moves this interval" />
+        <StatCard label="Keys typed" value={totalKeys} icon={Keyboard}
+          accent="primary" sub="Total keystrokes this session" />
       </div>
 
       {/* Offline banner */}
@@ -232,12 +246,12 @@ export default function LiveMonitoring() {
               </p>
             </div>
           </div>
-          {wpmHistory.filter((p) => p.wpm > 0).length < 2
+          {wpmHistory.filter((p) => p.wpm > 0).length < 1
             ? <EmptyState icon={Keyboard} title="No typing data"
                 description="Type continuously during a session to see your WPM trend." />
             : (
               <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={wpmHistory} aria-label="Words per minute over time chart">
+                <LineChart data={wpmHistory.filter((p) => p.wpm > 0)} aria-label="Words per minute over time chart">
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.12)" vertical={false} />
                   <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false}
