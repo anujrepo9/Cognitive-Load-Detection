@@ -52,7 +52,7 @@ def run():
                     id                    INTEGER PRIMARY KEY,
                     user_id               INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
                     tracking_enabled      BOOLEAN DEFAULT TRUE,
-                    flush_interval_sec    INTEGER DEFAULT 5,
+                    flush_interval_sec    INTEGER DEFAULT 15,
                     notifications_enabled BOOLEAN DEFAULT TRUE,
                     theme                 VARCHAR(20) DEFAULT 'system',
                     updated_at            TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -62,7 +62,7 @@ def run():
                     id                    INTEGER PRIMARY KEY,
                     user_id               INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
                     tracking_enabled      INTEGER DEFAULT 1,
-                    flush_interval_sec    INTEGER DEFAULT 5,
+                    flush_interval_sec    INTEGER DEFAULT 15,
                     notifications_enabled INTEGER DEFAULT 1,
                     theme                 TEXT DEFAULT 'system',
                     updated_at            DATETIME DEFAULT CURRENT_TIMESTAMP

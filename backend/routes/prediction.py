@@ -51,6 +51,7 @@ async def predict(
         scroll_rate         = payload.scroll_rate,
         idle_time_pct       = payload.idle_time_pct,
         avg_hover_ms        = payload.avg_hover_ms,
+        avg_acceleration    = payload.avg_acceleration,
         movement_smoothness = payload.movement_smoothness,
     )
     db.add(behavior_record)

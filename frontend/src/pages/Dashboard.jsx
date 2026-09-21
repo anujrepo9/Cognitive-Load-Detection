@@ -39,7 +39,7 @@ function formatDuration(seconds) {
 export default function Dashboard() {
   const { user } = useAuth()
   // Behavior tracker drives the flush loop → POST /predict → WS broadcast
-  const { prediction, websocketStatus: wsStatus, session, trackingState } = useTracking()
+  const { prediction, websocketStatus: wsStatus, session, trackingState, quality } = useTracking()
 
   const [loadLevel,    setLoadLevel]    = useState("unknown")
   const [confidence,   setConfidence]   = useState(null)
@@ -362,7 +362,7 @@ export default function Dashboard() {
             </h3>
             <div className="space-y-3">
               {[
-                { icon: Keyboard,          label: "Typing events",  value: stats?.typing_events  ?? predictions + " preds" },
+                { icon: Keyboard,          label: "Typing events",  value: quality?.totalKeys > 0 ? quality.totalKeys : (stats?.typing_events ?? "—") },
                 { icon: MousePointerClick, label: "Mouse clicks",   value: stats?.mouse_events   ?? "—" },
                 { icon: Cpu,              label: "Avg WPM",        value: stats?.avg_wpm        ?? "—" },
                 { icon: BrainCircuit,     label: "Model version",  value: modelInfo?.version ? `v${modelInfo.version}` : "rule-based" },

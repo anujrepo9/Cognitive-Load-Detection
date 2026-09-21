@@ -47,6 +47,7 @@ export default function LiveMonitoring() {
   // Track the most recently seen WPM so the stat card shows a live value
   const [latestWpm,   setLatestWpm]   = useState(null)
   // Cumulative key count across all flush intervals this session
+  const [totalKeys,   setTotalKeys]   = useState(0)
 
   const prevKeyEvents = useRef(0)
 
@@ -115,6 +116,7 @@ export default function LiveMonitoring() {
       setWpmHistory([])
       setConfidence(null)
       setLoadLevel("unknown")
+      setTotalKeys(0)
     }
   }, [trackingState])
 
@@ -122,15 +124,21 @@ export default function LiveMonitoring() {
   const WsIcon = wsUI.icon
 
   const liveMouseEvents = quality?.mouseEvents ?? 0
-  const totalKeys = quality?.totalKeys ?? 0
   // Show the most recent WPM value, or "—" if tracking hasn't produced one yet
   const liveWpm = latestWpm != null ? latestWpm : "—"
 
-  // Accumulate key events: quality.keyEvents resets each flush, so track delta
+  // Accumulate key events: quality.keyEvents resets each flush, so track the
+  // delta and add it to our running total whenever the counter resets.
   useEffect(() => {
+    if (trackingState === "idle") {
+      prevKeyEvents.current = 0
+      return
+    }
     const current = quality?.keyEvents ?? 0
-    if (trackingState === "idle") { setTotalKeys(0); prevKeyEvents.current = 0; return }
-    if (current < prevKeyEvents.current) setTotalKeys((t) => t + prevKeyEvents.current)
+    if (current < prevKeyEvents.current) {
+      // Counter just flushed/reset — bank what we had
+      setTotalKeys((t) => t + prevKeyEvents.current)
+    }
     prevKeyEvents.current = current
   }, [quality?.keyEvents, trackingState])
 

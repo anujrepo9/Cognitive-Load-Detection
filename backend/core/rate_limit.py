@@ -30,7 +30,7 @@ class SlidingWindowRateLimiter:
         """Drop expired entries for all keys (called periodically inside lock)."""
         cutoff = now - self.window_seconds
         expired = [k for k, hits in self._hits.items()
-                   if not hits or hits[0] > cutoff]
+                   if not hits or hits[-1] <= cutoff]
         for k in expired:
             del self._hits[k]
 

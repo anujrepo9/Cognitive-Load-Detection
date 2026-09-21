@@ -19,7 +19,7 @@ FEATURE_ORDER = [
     "typing_wpm", "chars_per_min", "avg_hold_ms", "avg_flight_ms",
     "error_rate", "pause_count", "avg_pause_ms", "typing_variance",
     "avg_cursor_speed", "movement_distance", "click_rate", "double_click_rate",
-    "scroll_rate", "idle_time_pct", "avg_hover_ms", "movement_smoothness",
+    "scroll_rate", "idle_time_pct", "avg_hover_ms", "avg_acceleration", "movement_smoothness",
 ]
 
 # Hard clamps — same as training generator
@@ -39,6 +39,7 @@ CLAMPS: dict[str, tuple[float, float]] = {
     "scroll_rate":         (0,    30),
     "idle_time_pct":       (0,    0.95),
     "avg_hover_ms":        (0,    2000),
+    "avg_acceleration":    (0,    5000),
     "movement_smoothness": (0,    1),
 }
 

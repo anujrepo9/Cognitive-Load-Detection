@@ -1,5 +1,5 @@
 /**
- * Phase 7 — useWebSocket
+ * File — useWebSocket.js
  *
  * Connects to /ws/predictions, auto-reconnects with exponential back-off,
  * and exposes the latest prediction + connection status to consumers.
@@ -11,6 +11,7 @@
  * `connected` → boolean shorthand
  * `prediction` → null | { load_level, confidence, scores, session_id }
  */
+
 import { useState, useEffect, useRef, useCallback } from "react"
 
 // Treat VITE_API_URL as "unset" when it points at localhost — that means the
@@ -61,6 +62,11 @@ export function useWebSocket(enabled = true) {
 
     const url = `${WS_BASE}/ws/predictions?token=${encodeURIComponent(token)}`
     setStatus(retryCountRef.current === 0 ? "connecting" : "reconnecting")
+
+    // Guard: if the component unmounted between the scheduling of this call
+    // and now (e.g. React Strict Mode double-invoke, fast page reload),
+    // don't open a socket that will be immediately closed.
+    if (!mountedRef.current) return
 
     const ws = new WebSocket(url)
     wsRef.current = ws
@@ -145,10 +151,21 @@ export function useWebSocket(enabled = true) {
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   useEffect(() => {
     mountedRef.current = true
-    if (enabled) connect()
+
+    // Defer the initial connection by one tick so that React Strict Mode's
+    // double-invoke of effects (mount → unmount → remount) doesn't open a
+    // WebSocket that is immediately closed, causing the console warning
+    // "WebSocket is closed before the connection is established."
+    let initTimer = null
+    if (enabled) {
+      initTimer = setTimeout(() => {
+        if (mountedRef.current) connect()
+      }, 0)
+    }
 
     return () => {
       mountedRef.current = false
+      clearTimeout(initTimer)
       clearTimeout(retryTimerRef.current)
       clearTimeout(heartbeatTimerRef.current)
       wsRef.current?.close()
