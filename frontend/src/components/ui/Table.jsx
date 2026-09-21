@@ -1,11 +1,6 @@
 /**
- * Reusable table primitive.
- *
- * Usage:
- *   <Table columns={columns} rows={rows} keyField="id" loading={loading} />
- *
- * columns: [{ key, label, render?, tip?, className? }]
- * rows: array of objects
+ * Reusable table — Swiss/Minimal edition.
+ * Tight rows, hairline borders, no background fills.
  */
 import { Loader2 } from "lucide-react"
 import EmptyState from "./EmptyState"
@@ -15,11 +10,12 @@ export function Table({ columns = [], rows = [], keyField = "id", loading = fals
     <div className="overflow-x-auto">
       <table className="w-full text-sm" role="table">
         <thead>
-          <tr className="border-b border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-800/50">
+          <tr className="border-b-2 border-[#0A0A0A] dark:border-white">
             {columns.map(({ key, label, tip, className = "" }) => (
               <th key={key} scope="col"
-                className={`text-left px-5 py-3 text-xs font-medium uppercase
-                  tracking-wider text-gray-500 ${className}`}
+                className={`text-left px-4 py-2.5 text-[10px] font-semibold
+                  uppercase tracking-widest text-gray-500 dark:text-gray-400
+                  ${className}`}
                 title={tip}>
                 {label}
               </th>
@@ -29,8 +25,8 @@ export function Table({ columns = [], rows = [], keyField = "id", loading = fals
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={columns.length} className="px-5 py-12 text-center">
-                <Loader2 className="w-5 h-5 animate-spin text-primary mx-auto" aria-label="Loading" />
+              <td colSpan={columns.length} className="px-4 py-12 text-center">
+                <Loader2 className="w-4 h-4 animate-spin text-[#0066FF] mx-auto" aria-label="Loading" />
               </td>
             </tr>
           ) : rows.length === 0 ? (
@@ -38,16 +34,16 @@ export function Table({ columns = [], rows = [], keyField = "id", loading = fals
               <td colSpan={columns.length}>
                 {emptyTitle
                   ? <EmptyState icon={emptyIcon} title={emptyTitle} description={emptyDesc} />
-                  : <p className="text-center text-sm text-gray-400 py-12">No data.</p>}
+                  : <p className="text-center text-[13px] text-gray-400 py-12">No data.</p>}
               </td>
             </tr>
           ) : (
             rows.map((row, i) => (
               <tr key={row[keyField] ?? i}
-                className="border-b border-gray-50 dark:border-slate-800/50
-                  hover:bg-gray-50 dark:hover:bg-slate-800/40 transition-colors">
+                className="border-b border-[#F0F0F0] dark:border-[#1A1A1A]
+                  hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors">
                 {columns.map(({ key, render, className = "" }) => (
-                  <td key={key} className={`px-5 py-3 ${className}`}>
+                  <td key={key} className={`px-4 py-3 text-[13px] ${className}`}>
                     {render ? render(row[key], row) : row[key]}
                   </td>
                 ))}

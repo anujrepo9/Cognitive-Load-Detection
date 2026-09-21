@@ -1,19 +1,19 @@
 import { motion } from "framer-motion"
 
-const accentMap = {
-  primary: "from-primary/15 to-primary/5",
-  accent:  "from-accent/15 to-accent/5",
-  success: "from-success/15 to-success/5",
-  warning: "from-warning/15 to-warning/5",
-  danger:  "from-danger/15 to-danger/5",
+const accentLine = {
+  primary: "bg-[#0066FF]",
+  accent:  "bg-[#0066FF]",
+  success: "bg-[#16A34A]",
+  warning: "bg-[#CA8A04]",
+  danger:  "bg-[#DC2626]",
 }
 
-const iconMap = {
-  primary: "bg-primary/10 text-primary",
-  accent:  "bg-accent/10 text-accent",
-  success: "bg-success/10 text-success",
-  warning: "bg-warning/10 text-warning",
-  danger:  "bg-danger/10 text-danger",
+const accentText = {
+  primary: "text-[#0066FF]",
+  accent:  "text-[#0066FF]",
+  success: "text-[#16A34A]",
+  warning: "text-[#CA8A04]",
+  danger:  "text-[#DC2626]",
 }
 
 export default function StatCard({
@@ -22,45 +22,50 @@ export default function StatCard({
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay }}
-      className={`card p-5 overflow-hidden ${className}`}
+      transition={{ duration: 0.25, delay }}
+      className={`card p-5 relative overflow-hidden ${className}`}
     >
-      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r opacity-60 ${accentMap[accent]}`} />
+      {/* Top accent line — single 2px rule, the only decoration */}
+      <div className={`absolute top-0 left-0 right-0 h-[2px] ${accentLine[accent]}`} />
 
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400
-            uppercase tracking-wider">{label}</p>
-          <p className="mt-1.5 text-2xl font-bold text-gray-900 dark:text-white">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] font-semibold tracking-widest uppercase
+            text-gray-400 dark:text-gray-500 mb-2">
+            {label}
+          </p>
+          <p className="text-[28px] font-semibold tracking-tight
+            text-gray-900 dark:text-white leading-none">
             {value}
-            {unit && <span className="text-sm text-gray-400 font-medium ml-1">{unit}</span>}
+            {unit && (
+              <span className="text-base font-normal text-gray-400 ml-1">{unit}</span>
+            )}
           </p>
         </div>
         {Icon && (
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${iconMap[accent]}`}>
-            <Icon className="w-5 h-5" />
-          </div>
+          <Icon className={`w-4 h-4 mt-1 shrink-0 ${accentText[accent]}`}
+            aria-hidden="true" />
         )}
       </div>
 
       {(sub || trend != null) && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mt-3">
           {trend != null && (
-            <span className={`text-xs font-semibold inline-flex items-center gap-0.5
-              ${trend >= 0 ? "text-success" : "text-danger"}`}>
+            <span className={`text-[11px] font-semibold
+              ${trend >= 0 ? "text-[#16A34A]" : "text-[#DC2626]"}`}>
               {trend >= 0 ? "↑" : "↓"} {Math.abs(trend)}%
             </span>
           )}
-          {sub && <span className="text-xs text-gray-400">{sub}</span>}
+          {sub && <span className="text-[11px] text-gray-400">{sub}</span>}
         </div>
       )}
 
       {delta != null && (
-        <span className="text-xs font-medium text-gray-400">
+        <p className="text-[11px] text-gray-400 mt-1">
           {delta >= 0 ? "+" : ""}{delta} vs last period
-        </span>
+        </p>
       )}
 
       {chart}

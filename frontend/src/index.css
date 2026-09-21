@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Reduced-motion: disable all transitions / animations ─────────────────── */
+
+/* ── Reduced-motion ────────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -13,154 +14,170 @@
 }
 
 @layer base {
+  :root {
+    --grid: 8px;
+    --accent: #0066FF;
+    --line:  #E5E5E5;
+    --line-dark: #222222;
+  }
+
+  html {
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
-    @apply bg-surface-light text-gray-900 font-sans antialiased transition-colors duration-300;
+    @apply bg-white text-gray-900 font-sans;
+    letter-spacing: -0.011em;
   }
+
   .dark body {
-    @apply bg-surface-dark text-gray-100;
+    @apply bg-[#0A0A0A] text-gray-100;
   }
 
-  /* Focus ring — high-contrast for keyboard navigation */
   :focus-visible {
-    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-white dark:ring-offset-slate-900;
+    @apply outline-none ring-1 ring-[#0066FF] ring-offset-2 ring-offset-white;
+  }
+  .dark :focus-visible {
+    @apply ring-offset-[#0A0A0A];
   }
 
-  ::-webkit-scrollbar { @apply w-1.5 h-1.5; }
+  /* Thin, quiet scrollbar */
+  ::-webkit-scrollbar       { @apply w-[3px] h-[3px]; }
   ::-webkit-scrollbar-track { @apply bg-transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-gray-600/50 rounded-full; }
-  ::-webkit-scrollbar-thumb:hover { @apply bg-gray-500/60; }
+  ::-webkit-scrollbar-thumb { @apply bg-gray-300 dark:bg-gray-700; }
 
   input, select, textarea { @apply outline-none; }
+  ::placeholder { @apply text-gray-400; }
 
-  /* Ensure sufficient color contrast on placeholder text */
-  ::placeholder { @apply text-gray-500 dark:text-gray-400; }
+  h1 { @apply text-2xl font-semibold tracking-tight leading-tight; }
+  h2 { @apply text-lg font-semibold tracking-tight; }
+  h3 { @apply text-sm font-semibold; }
 }
 
 @layer components {
-  /* Premium card */
+  /* ── Card: flat, border-only — no shadow, no rounding ─────────────────── */
   .card {
-    @apply bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800
-      rounded-2xl shadow-sm dark:shadow-none
-      transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5;
+    @apply bg-white dark:bg-[#111111]
+      border border-[#E5E5E5] dark:border-[#222222]
+      transition-colors duration-150;
   }
 
-  /* Glassmorphism */
-  .glass {
-    @apply bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl
-      border border-white/60 dark:border-slate-800/60 shadow-lg;
-  }
+  /* ── Glass: same treatment ─────────────────────────────────────────────── */
+  .glass      { @apply bg-white/90 dark:bg-[#111111]/90 border border-[#E5E5E5] dark:border-[#222222] backdrop-blur-sm; }
+  .glass-dark { @apply bg-[#111111]/95 border border-[#222222] backdrop-blur-sm; }
 
-  .glass-dark {
-    @apply bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 shadow-xl;
-  }
+  /* ── Text gradient: removed — use accent color directly ────────────────── */
+  .text-gradient { @apply text-[#0066FF]; }
 
-  /* Gradient text */
-  .text-gradient {
-    @apply bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent;
-  }
-
-  /* Skeleton loader */
+  /* ── Skeleton ──────────────────────────────────────────────────────────── */
   .skeleton {
-    @apply bg-gray-200 dark:bg-slate-800 rounded-lg relative overflow-hidden;
+    @apply bg-gray-100 dark:bg-[#1A1A1A] relative overflow-hidden;
   }
   .skeleton::after {
     content: "";
     @apply absolute inset-0;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(255, 255, 255, 0.08),
-      transparent
-    );
-    animation: shimmer 2s linear infinite;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+    animation: shimmer 1.5s linear infinite;
     background-size: 200% 100%;
   }
-
-  /* Input field — meets WCAG AA contrast on both light/dark */
-  .input {
-    @apply w-full bg-gray-50 dark:bg-slate-800 border border-gray-300 dark:border-slate-600
-      rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100
-      placeholder-gray-500 dark:placeholder-gray-400
-      focus:border-primary focus:ring-2 focus:ring-primary/20
-      transition-all duration-200;
+  .dark .skeleton::after {
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
   }
 
-  /* Button variants */
+  /* ── Input ─────────────────────────────────────────────────────────────── */
+  .input {
+    @apply w-full bg-white dark:bg-[#111111]
+      border border-[#E5E5E5] dark:border-[#2A2A2A]
+      px-3 py-2 text-sm text-gray-900 dark:text-gray-100
+      placeholder-gray-400
+      focus:border-[#0066FF] focus:ring-1 focus:ring-[#0066FF]/20
+      transition-colors duration-150;
+  }
+
+  /* ── Buttons — Swiss: flat, no shadow, no rounded corners ─────────────── */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
-      bg-primary hover:bg-primary-light text-white text-sm font-medium
-      rounded-xl shadow-glow-primary hover:shadow-lg
-      transition-all duration-200 hover:-translate-y-0.5
-      active:scale-95 disabled:opacity-50 disabled:pointer-events-none
-      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+      bg-[#0066FF] hover:bg-[#0052CC] text-white text-sm font-medium
+      transition-colors duration-150
+      active:scale-[0.99] disabled:opacity-40 disabled:pointer-events-none
+      focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0066FF];
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
-      bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700
-      text-gray-700 dark:text-gray-200 text-sm font-medium
-      rounded-xl border border-gray-200 dark:border-slate-700
-      transition-all duration-200 hover:-translate-y-0.5 active:scale-95
-      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+      bg-transparent hover:bg-gray-50 dark:hover:bg-[#1A1A1A]
+      text-gray-700 dark:text-gray-300 text-sm font-medium
+      border border-[#E5E5E5] dark:border-[#2A2A2A]
+      transition-colors duration-150
+      active:scale-[0.99]
+      focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0066FF];
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
-      text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800
-      text-sm font-medium rounded-xl transition-all duration-200
-      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50;
+    @apply inline-flex items-center justify-center gap-2 px-3 py-2
+      text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100
+      hover:bg-gray-50 dark:hover:bg-[#1A1A1A]
+      text-sm font-medium transition-colors duration-150
+      focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0066FF];
   }
 
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
-      bg-danger hover:bg-danger-light text-white text-sm font-medium
-      rounded-xl shadow-lg transition-all duration-200 hover:-translate-y-0.5
-      active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/50;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+      bg-[#DC2626] hover:bg-[#B91C1C] text-white text-sm font-medium
+      transition-colors duration-150
+      active:scale-[0.99]
+      focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#DC2626];
   }
 
-  /* Badge */
+  /* ── Badge — very subtle, text-forward ────────────────────────────────── */
   .badge {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5
       text-xs font-medium border transition-colors;
   }
 
-  /* Section title */
+  /* ── Section title ─────────────────────────────────────────────────────── */
   .section-title {
-    @apply text-sm font-semibold text-gray-700 dark:text-gray-200
-      uppercase tracking-wider;
+    @apply text-[11px] font-semibold text-gray-400 dark:text-gray-500
+      uppercase tracking-widest;
   }
 
-  /* Table rows */
+  /* ── Table ─────────────────────────────────────────────────────────────── */
   .table-row {
-    @apply border-b border-gray-100 dark:border-slate-800
-      hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors;
+    @apply border-b border-[#E5E5E5] dark:border-[#1E1E1E]
+      hover:bg-gray-50 dark:hover:bg-[#141414] transition-colors;
   }
 
-  /* Progress bar */
+  /* ── Progress ──────────────────────────────────────────────────────────── */
   .progress-track {
-    @apply h-2 rounded-full bg-gray-100 dark:bg-slate-800 overflow-hidden;
+    @apply h-[2px] bg-gray-100 dark:bg-[#222222] overflow-hidden;
   }
   .progress-fill {
-    @apply h-full rounded-full transition-all duration-500;
+    @apply h-full transition-all duration-500;
   }
 
-  /* Screen-reader only (skip link) */
+  /* ── Divider ───────────────────────────────────────────────────────────── */
+  .divider {
+    @apply border-t border-[#E5E5E5] dark:border-[#222222];
+  }
+
+  /* ── Mono label — for numbers/data ────────────────────────────────────── */
+  .mono {
+    @apply font-mono text-[13px] tracking-tight;
+  }
+
+  /* ── SR only ───────────────────────────────────────────────────────────── */
   .sr-only {
-    position: absolute;
-    width: 1px; height: 1px;
-    padding: 0; margin: -1px;
-    overflow: hidden;
-    clip: rect(0,0,0,0);
-    white-space: nowrap;
-    border-width: 0;
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0,0,0,0); white-space: nowrap; border-width: 0;
   }
   .focus\:not-sr-only:focus {
-    position: fixed;
-    width: auto; height: auto;
-    padding: inherit; margin: inherit;
-    overflow: visible;
-    clip: auto;
-    white-space: normal;
+    position: fixed; width: auto; height: auto;
+    padding: inherit; margin: inherit; overflow: visible;
+    clip: auto; white-space: normal;
   }
 }
 
