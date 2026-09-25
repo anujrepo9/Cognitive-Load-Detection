@@ -1,6 +1,22 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from pydantic import BaseModel, EmailStr, field_validator
+
+
+def _as_utc(value):
+    """Attach a UTC tzinfo to naive datetimes before they're serialized.
+
+    SQLite (unlike Postgres) doesn't actually persist timezone info even
+    though the SQLAlchemy column is declared DateTime(timezone=True) — every
+    value that comes back from the DB is a naive datetime, even though it's
+    always UTC (see database/models.py's utcnow()). Left naive, Pydantic
+    serializes it without a "Z"/offset suffix, so the browser's
+    `new Date(...)` parses it as LOCAL time instead of UTC — e.g. for a user
+    in IST (UTC+5:30), "just started" sessions show up as 330 minutes old.
+    """
+    if isinstance(value, datetime) and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -138,6 +154,9 @@ class SessionOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    _normalize_start = field_validator("start_time", mode="before")(_as_utc)
+    _normalize_end   = field_validator("end_time",   mode="before")(_as_utc)
+
 
 class HistoryResponse(BaseModel):
     sessions: list[SessionOut]
@@ -166,11 +185,15 @@ class CurrentSessionResponse(BaseModel):
     latest_load:       Optional[str]
     latest_confidence: Optional[float]
 
+    _normalize_start = field_validator("start_time", mode="before")(_as_utc)
+
 
 class EndSessionResponse(BaseModel):
     session_id: int
     end_time:   datetime
     duration:   str
+
+    _normalize_end = field_validator("end_time", mode="before")(_as_utc)
 
 
 # ── Reports ───────────────────────────────────────────────────────────────────

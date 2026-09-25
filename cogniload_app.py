@@ -22,10 +22,23 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import webbrowser
 import tkinter as tk
 from tkinter import messagebox
 from pathlib import Path
+
+import uvicorn
+
+# When PyInstaller builds this as a windowed app (console=False), there is
+# no console attached, so sys.stdout/sys.stderr are None. Anything that
+# writes to them (our own print()s, and uvicorn's default logging setup,
+# which calls sys.stdout.isatty() to decide whether to colorize) would
+# crash with AttributeError. Give them harmless no-op targets instead.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
 
 # Optional system tray (pystray + Pillow)
 try:
@@ -53,7 +66,9 @@ ENV_FILE    = DATA_DIR / ".env"
 MODEL_DIR   = APP_DIR / "ml" / "saved_models"
 
 # ── State ───────────────────────────────────────────────────────────────────
-_backend_proc: subprocess.Popen | None = None
+_uvicorn_server: uvicorn.Server | None = None
+_backend_thread: threading.Thread | None = None
+_backend_start_error: str | None = None
 _tray_icon = None
 _port = 8000
 
@@ -70,7 +85,7 @@ def ensure_env(port: int) -> None:
     db_path = (DATA_DIR / "cogniload.db").as_posix()
     model_path = (MODEL_DIR / "model.joblib").as_posix()
 
-    content = f"""# CogniLoad — auto-generated configuration
+    content = f"""# CogniLoad - auto-generated configuration
 DATABASE_URL=sqlite:///{db_path}
 SECRET_KEY=change-me-in-production-use-a-long-random-string
 MODEL_PATH={model_path}
@@ -78,7 +93,7 @@ HOST=127.0.0.1
 PORT={port}
 STATIC_DIR={DIST_DIR.as_posix()}
 """
-    ENV_FILE.write_text(content)
+    ENV_FILE.write_text(content, encoding="utf-8")
     print(f"[ENV] Created {ENV_FILE}")
 
 
@@ -86,35 +101,56 @@ STATIC_DIR={DIST_DIR.as_posix()}
 # Backend process management
 # ─────────────────────────────────────────────────────────────────────────────
 
-def start_backend(port: int) -> subprocess.Popen:
-    """Launch uvicorn in a subprocess."""
-    env = os.environ.copy()
-    env["COGNILOAD_ENV_FILE"] = str(ENV_FILE)
-    env["COGNILOAD_STATIC_DIR"] = str(DIST_DIR)
+def start_backend(port: int) -> threading.Thread:
+    """Launch uvicorn in-process, on a background thread.
 
-    cmd = [
-        sys.executable, "-m", "uvicorn", "main:app",
-        "--host", "127.0.0.1",
-        "--port", str(port),
-        "--no-access-log",
-    ]
+    IMPORTANT: we deliberately do NOT subprocess.Popen([sys.executable, ...])
+    here. That pattern only works when sys.executable is a real Python
+    interpreter. Once this script is frozen by PyInstaller, sys.executable
+    points at CogniLoad.exe itself — so that subprocess would just try to
+    re-launch the app with "-m uvicorn main:app ..." as arguments, which
+    this app's own argparse doesn't understand, causing an instant silent
+    exit (stderr went to an unread pipe). Running uvicorn directly in this
+    process avoids the whole problem, and lets real startup errors surface
+    instead of vanishing.
+    """
+    global _backend_start_error
+    _backend_start_error = None
+
+    os.environ["COGNILOAD_ENV_FILE"] = str(ENV_FILE)
+    os.environ["COGNILOAD_STATIC_DIR"] = str(DIST_DIR)
+
+    # Make `main.py` (and the config/core/routes/... modules it imports)
+    # importable, the same way cwd=BACKEND_DIR made them importable for the
+    # old `python -m uvicorn main:app` subprocess.
+    backend_dir = str(BACKEND_DIR)
+    if backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
 
     print(f"[BACKEND] Starting on http://127.0.0.1:{port}")
 
-    # On Windows, hide the console window for the subprocess
-    kwargs = {}
-    if platform.system() == "Windows":
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    def _run():
+        global _uvicorn_server, _backend_start_error
+        try:
+            app_module = __import__("main")
+            config = uvicorn.Config(
+                app_module.app,
+                host="127.0.0.1",
+                port=port,
+                log_level="info",
+                access_log=False,
+                use_colors=False,
+            )
+            _uvicorn_server = uvicorn.Server(config)
+            _uvicorn_server.run()
+        except Exception:
+            _backend_start_error = traceback.format_exc()
+            print("[BACKEND] Failed to start:")
+            print(_backend_start_error)
 
-    proc = subprocess.Popen(
-        cmd,
-        cwd=str(BACKEND_DIR),
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        **kwargs,
-    )
-    return proc
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return thread
 
 
 def wait_for_backend(port: int, timeout: float = 20.0) -> bool:
@@ -134,15 +170,11 @@ def wait_for_backend(port: int, timeout: float = 20.0) -> bool:
 
 
 def stop_backend() -> None:
-    global _backend_proc
-    if _backend_proc and _backend_proc.poll() is None:
+    global _uvicorn_server
+    if _uvicorn_server is not None:
         print("[BACKEND] Stopping…")
-        _backend_proc.terminate()
-        try:
-            _backend_proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            _backend_proc.kill()
-        _backend_proc = None
+        _uvicorn_server.should_exit = True
+        _uvicorn_server = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -233,7 +265,7 @@ def show_splash(port: int) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    global _backend_proc, _port
+    global _backend_thread, _port
 
     parser = argparse.ArgumentParser(description="CogniLoad Windows App")
     parser.add_argument("--port", type=int, default=8000)
@@ -246,18 +278,28 @@ def main() -> None:
     ensure_env(args.port)
 
     # Start backend
-    _backend_proc = start_backend(args.port)
+    _backend_thread = start_backend(args.port)
 
     # Show splash window while waiting
     show_splash(args.port)
 
     # Check backend actually started
     if not wait_for_backend(args.port, timeout=30):
-        messagebox.showerror(
-            "CogniLoad — Error",
-            "Backend failed to start within 30 seconds.\n"
-            "Check that port 8000 is free and try again."
-        )
+        if _backend_start_error:
+            # Surface the real exception instead of a generic message.
+            detail = _backend_start_error.strip().splitlines()[-1]
+            messagebox.showerror(
+                "CogniLoad — Error",
+                "Backend failed to start:\n\n" + detail +
+                f"\n\nFull traceback logged to:\n{DATA_DIR / 'backend_error.log'}"
+            )
+            (DATA_DIR / "backend_error.log").write_text(_backend_start_error, encoding="utf-8")
+        else:
+            messagebox.showerror(
+                "CogniLoad — Error",
+                "Backend failed to start within 30 seconds.\n"
+                "Check that port 8000 is free and try again."
+            )
         stop_backend()
         sys.exit(1)
 
@@ -272,7 +314,7 @@ def main() -> None:
         # Fallback: keep alive in main thread
         print("[APP] Running. Close this window or press Ctrl+C to quit.")
         try:
-            _backend_proc.wait()
+            _backend_thread.join()
         except KeyboardInterrupt:
             pass
         finally:

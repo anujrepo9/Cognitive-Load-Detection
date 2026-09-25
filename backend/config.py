@@ -2,7 +2,15 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# The packaged desktop app (cogniload_app.py) generates its .env in the
+# user's per-machine data folder and tells us where via COGNILOAD_ENV_FILE,
+# since the working directory when frozen is a temp extraction folder.
+# Fall back to a plain .env in the backend/ folder for normal dev use.
+_env_file = os.environ.get("COGNILOAD_ENV_FILE")
+if _env_file:
+    load_dotenv(_env_file, encoding="utf-8")
+else:
+    load_dotenv(encoding="utf-8")
 
 # Project root is one level above this file (backend/)
 _BACKEND_DIR  = Path(__file__).parent
