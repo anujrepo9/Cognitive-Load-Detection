@@ -50,7 +50,7 @@ export default function Recommendations() {
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
-          bg-primary/10 text-primary text-xs font-semibold">
+          bg-accent/10 text-accent text-xs font-semibold">
           <Sparkles className="w-3.5 h-3.5" aria-hidden="true" /> Rule-based engine
         </span>
       </motion.div>
@@ -120,7 +120,7 @@ export default function Recommendations() {
                     ) : (
                       <button onClick={() => acknowledge(i)}
                         className="inline-flex items-center gap-1.5 text-xs font-semibold
-                          text-primary hover:underline">
+                          text-accent hover:underline">
                         <Check className="w-3.5 h-3.5" /> Acknowledge
                       </button>
                     )}

@@ -46,7 +46,7 @@ export default function Register() {
               <BrainCircuit className="w-6 h-6 text-white" />
             </div>
             <span className="text-xl font-bold text-gray-900 dark:text-white">
-              Cogni<span className="text-primary">Load</span>
+              Cogni<span className="text-accent">Load</span>
             </span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create your account</h1>
@@ -132,7 +132,7 @@ export default function Register() {
 
           <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
             Already have an account?{" "}
-            <Link to="/login" className="text-primary font-semibold hover:underline">
+            <Link to="/login" className="text-accent font-semibold hover:underline">
               Sign in
             </Link>
           </p>

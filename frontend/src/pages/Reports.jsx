@@ -153,7 +153,7 @@ export default function Reports() {
 
       {loading ? (
         <div className="flex justify-center py-16" aria-live="polite" aria-label="Loading reports">
-          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <Loader2 className="w-6 h-6 animate-spin text-accent" />
         </div>
       ) : (
         <>

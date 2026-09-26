@@ -45,7 +45,7 @@ export default function Login() {
               <BrainCircuit className="w-6 h-6 text-white" />
             </div>
             <span className="text-xl font-bold text-gray-900 dark:text-white">
-              Cogni<span className="text-primary">Load</span>
+              Cogni<span className="text-accent">Load</span>
             </span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Welcome back</h1>
@@ -115,7 +115,7 @@ export default function Login() {
 
           <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
             No account?{" "}
-            <Link to="/register" className="text-primary font-semibold hover:underline">
+            <Link to="/register" className="text-accent font-semibold hover:underline">
               Create one
             </Link>
           </p>

@@ -76,7 +76,7 @@ export default function Settings() {
 
   if (loading) return (
     <div className="p-6 flex items-center justify-center h-48" aria-live="polite" aria-label="Loading settings">
-      <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      <Loader2 className="w-6 h-6 animate-spin text-accent" />
     </div>
   )
 
@@ -116,7 +116,7 @@ export default function Settings() {
           aria-labelledby="tracking-heading" className="card p-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-              <Cpu className="w-5 h-5 text-primary" aria-hidden="true" />
+              <Cpu className="w-5 h-5 text-accent" aria-hidden="true" />
             </div>
             <h2 id="tracking-heading" className="font-semibold text-gray-900 dark:text-white">
               Tracking

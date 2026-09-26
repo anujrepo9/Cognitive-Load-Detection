@@ -16,7 +16,7 @@ export default function ChartCard({
           {Icon && (
             <div className="w-9 h-9 rounded-xl bg-primary/10 dark:bg-primary/20
               flex items-center justify-center">
-              <Icon className="w-5 h-5 text-primary" />
+              <Icon className="w-5 h-5 text-accent" />
             </div>
           )}
           <div>

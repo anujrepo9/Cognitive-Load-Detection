@@ -31,7 +31,7 @@ export default function TrackingStatus() {
           <p className="mt-1 flex items-center gap-1.5 font-semibold text-gray-800 dark:text-white">
             {trackingState === "paused"
               ? <CirclePause className="w-4 h-4 text-warning" />
-              : <Radio className={`w-4 h-4 ${trackingState === "tracking" ? "text-primary animate-pulse" : "text-gray-400"}`} />}
+              : <Radio className={`w-4 h-4 ${trackingState === "tracking" ? "text-accent animate-pulse" : "text-gray-400"}`} />}
             {trackerLabel}
           </p>
         </div>

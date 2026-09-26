@@ -136,7 +136,7 @@ export default function History() {
 
       {loading ? (
         <div className="flex justify-center py-16" aria-live="polite" aria-label="Loading">
-          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <Loader2 className="w-6 h-6 animate-spin text-accent" />
         </div>
       ) : sessions.length === 0 ? (
         <div className="card">

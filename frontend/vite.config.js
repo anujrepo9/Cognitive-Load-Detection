@@ -8,9 +8,9 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+        // No rewrite — backend mounts all routes under /api already,
+        // so /api/auth/login proxies straight to http://localhost:8000/api/auth/login
       },
-
       '/ws': {
         target: 'ws://localhost:8000',
         changeOrigin: true,
