@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
-import { Save, Bell, Shield, Cpu, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+import { Save, Bell, Shield, Cpu, Loader2, CheckCircle2, AlertCircle, Power } from "lucide-react"
 import { settingsAPI, getErrorMessage } from "../services/api"
 import { useTheme } from "../context/ThemeContext"
 import { PageHeader } from "../components/ui/PageHeader"
@@ -41,16 +41,22 @@ export default function Settings() {
   const [saving,        setSaving]     = useState(false)
   const [saved,         setSaved]      = useState(false)
   const [error,         setError]      = useState(null)
+  const [autostart,     setAutostart]  = useState(false)
+  const [autostartSaving, setAutostartSaving] = useState(false)
+  const [autostartError,  setAutostartError]  = useState(null)
 
   useAuthFetch(() => {
-    settingsAPI.get()
-      .then(({ data }) => {
-        setTracking(data.tracking_enabled ?? true)
-        setInterval_(data.flush_interval_sec ?? 5)
-        setNotifications(data.notifications_enabled ?? true)
-        setTheme(data.theme ?? "system")
-        setAppTheme(data.theme ?? "system")
-      })
+    Promise.all([
+      settingsAPI.get(),
+      settingsAPI.getAutostart().catch(() => ({ data: { enabled: false } })),
+    ]).then(([{ data }, { data: autostartData }]) => {
+      setTracking(data.tracking_enabled ?? true)
+      setInterval_(data.flush_interval_sec ?? 5)
+      setNotifications(data.notifications_enabled ?? true)
+      setTheme(data.theme ?? "system")
+      setAppTheme(data.theme ?? "system")
+      setAutostart(autostartData.enabled ?? false)
+    })
       .catch((err) => setError(getErrorMessage(err, "Could not load settings.")))
       .finally(() => setLoading(false))
   }, [])
@@ -71,6 +77,23 @@ export default function Settings() {
       setError(getErrorMessage(err, "Failed to save settings."))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const toggleAutostart = async (next) => {
+    setAutostartSaving(true)
+    setAutostartError(null)
+    try {
+      if (next) {
+        await settingsAPI.enableAutostart()
+      } else {
+        await settingsAPI.disableAutostart()
+      }
+      setAutostart(next)
+    } catch (err) {
+      setAutostartError(getErrorMessage(err, "Failed to update startup setting."))
+    } finally {
+      setAutostartSaving(false)
     }
   }
 
@@ -198,6 +221,56 @@ export default function Settings() {
           </div>
         </motion.section>
       </div>
+
+      {/* Windows Startup */}
+      <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }} aria-labelledby="startup-heading" className="card p-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+            <Power className="w-5 h-5 text-accent" aria-hidden="true" />
+          </div>
+          <h2 id="startup-heading" className="font-semibold text-gray-900 dark:text-white">
+            Windows Startup
+          </h2>
+        </div>
+
+        {autostartError && (
+          <div role="alert" className="mb-4 rounded-xl bg-red-50 dark:bg-red-900/20
+            border border-red-200 dark:border-red-800 px-4 py-3 text-sm
+            text-red-600 dark:text-red-400 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+            {autostartError}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+              Launch at login
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Start CogniLoad automatically when you sign in to Windows
+            </p>
+          </div>
+          {autostartSaving ? (
+            <Loader2 className="w-5 h-5 animate-spin text-accent flex-shrink-0" />
+          ) : (
+            <button
+              role="switch"
+              aria-checked={autostart}
+              aria-label="Launch at Windows login"
+              onClick={() => toggleAutostart(!autostart)}
+              className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50
+                ${autostart ? "bg-primary" : "bg-gray-300 dark:bg-slate-700"}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow
+                transition-transform ${autostart ? "translate-x-[18px]" : "translate-x-0"}`}
+                aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      </motion.section>
 
       {/* Privacy */}
       <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}

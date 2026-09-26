@@ -68,9 +68,9 @@ def run():
                     updated_at            DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """))
-            print("  ✓ user_settings created")
+            print("  [OK] user_settings created")
         else:
-            print("✓ user_settings already exists")
+            print("[OK] user_settings already exists")
 
         # ── 2. predictions.behavior_id ────────────────────────────────────────
         if not col_exists(inspector, "predictions", "behavior_id"):
@@ -80,9 +80,9 @@ def run():
                 if not IS_SQLITE else
                 "ALTER TABLE predictions ADD COLUMN behavior_id INTEGER"
             ))
-            print("  ✓ predictions.behavior_id added")
+            print("  [OK] predictions.behavior_id added")
         else:
-            print("✓ predictions.behavior_id already exists")
+            print("[OK] predictions.behavior_id already exists")
 
         # ── 3. behavior_data.created_at ───────────────────────────────────────
         if not col_exists(inspector, "behavior_data", "created_at"):
@@ -104,9 +104,9 @@ def run():
                     conn.execute(text(
                         'UPDATE behavior_data SET created_at = "timestamp" WHERE created_at IS NULL'
                     ))
-            print("  ✓ behavior_data.created_at added")
+            print("  [OK] behavior_data.created_at added")
         else:
-            print("✓ behavior_data.created_at already exists")
+            print("[OK] behavior_data.created_at already exists")
 
         # ── 4. sessions.end_time nullable check (already nullable by design) ──
         # Nothing to migrate — end_time has always been nullable.
@@ -135,9 +135,9 @@ def run():
                     revoked_at DATETIME
                 )
             """))
-            print("  ✓ refresh_tokens created")
+            print("  [OK] refresh_tokens created")
         else:
-            print("✓ refresh_tokens already exists")
+            print("[OK] refresh_tokens already exists")
 
     print("\nMigration complete. Restart the backend server.")
 

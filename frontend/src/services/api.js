@@ -150,8 +150,11 @@ export const analyticsAPI = {
 }
 
 export const settingsAPI = {
-  get:    ()     => api.get("/settings"),
-  update: (data) => api.put("/settings", data),
+  get:              ()     => api.get("/settings"),
+  update:           (data) => api.put("/settings", data),
+  getAutostart:     ()     => api.get("/settings/autostart"),
+  enableAutostart:  ()     => api.post("/settings/autostart"),
+  disableAutostart: ()     => api.delete("/settings/autostart"),
 }
 
 export const modelAPI = {

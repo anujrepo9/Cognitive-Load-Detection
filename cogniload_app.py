@@ -40,6 +40,32 @@ if sys.stdout is None:
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w")
 
+# On Windows the default console encoding is cp1252 (or similar) which cannot
+# represent Unicode characters like ✓, —, …, 🧠 used in log output.
+# Reconfigure stdout/stderr to UTF-8 so print() never raises UnicodeEncodeError.
+# errors="replace" is the final safety net: any character that still can't be
+# encoded is replaced with '?' rather than crashing the app.
+import io as _io
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    else:
+        sys.stdout = _io.TextIOWrapper(
+            sys.stdout.buffer, encoding="utf-8", errors="replace"
+        )
+except Exception:
+    pass
+
+try:
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    else:
+        sys.stderr = _io.TextIOWrapper(
+            sys.stderr.buffer, encoding="utf-8", errors="replace"
+        )
+except Exception:
+    pass
+
 # Optional system tray (pystray + Pillow)
 try:
     import pystray
@@ -78,23 +104,93 @@ _port = 8000
 # ─────────────────────────────────────────────────────────────────────────────
 
 def ensure_env(port: int) -> None:
-    """Create .env in user data dir if it doesn't exist."""
-    if ENV_FILE.exists():
-        return
+    """Create .env in user data dir if it doesn't exist, then pin all
+    critical values into os.environ immediately.
 
-    db_path = (DATA_DIR / "cogniload.db").as_posix()
+    Pinning into os.environ matters because the backend's config.py uses
+    load_dotenv() which does NOT override variables that are already set in
+    the process environment.  By writing the absolute DB path directly into
+    os.environ here — before any backend module is imported — we guarantee
+    that config.py always gets the right DATABASE_URL even when Python's
+    module cache returns a previously-imported (and already-configured)
+    config module to a later importer.
+
+    Without this, run_migrations() or start_backend() could import config.py
+    before COGNILOAD_ENV_FILE is set, causing config.py to fall back to the
+    relative path  sqlite:///./cogniload.db  which resolves inside the
+    PyInstaller _MEIPASS temp directory — a folder that is wiped on every
+    launch — giving every run a fresh empty database and making login
+    impossible for any account created in a previous session.
+    """
+    import secrets as _secrets
+
+    db_path    = (DATA_DIR / "cogniload.db").as_posix()
     model_path = (MODEL_DIR / "model.joblib").as_posix()
 
-    content = f"""# CogniLoad - auto-generated configuration
-DATABASE_URL=sqlite:///{db_path}
-SECRET_KEY=change-me-in-production-use-a-long-random-string
-MODEL_PATH={model_path}
-HOST=127.0.0.1
-PORT={port}
-STATIC_DIR={DIST_DIR.as_posix()}
-"""
-    ENV_FILE.write_text(content, encoding="utf-8")
-    print(f"[ENV] Created {ENV_FILE}")
+    if not ENV_FILE.exists():
+        # Generate a proper random secret so JWT tokens survive restarts
+        secret_key = _secrets.token_hex(32)
+        content = (
+            "# CogniLoad - auto-generated configuration\n"
+            f"DATABASE_URL=sqlite:///{db_path}\n"
+            f"SECRET_KEY={secret_key}\n"
+            f"MODEL_PATH={model_path}\n"
+            f"HOST=127.0.0.1\n"
+            f"PORT={port}\n"
+            f"STATIC_DIR={DIST_DIR.as_posix()}\n"
+        )
+        ENV_FILE.write_text(content, encoding="utf-8")
+        print(f"[ENV] Created {ENV_FILE}")
+
+    # ── Pin env vars into the live process environment ────────────────────
+    # Read what's actually in the .env file so we honour any user edits.
+    # We only set each variable if it isn't already set by the OS/shell,
+    # except for COGNILOAD_ENV_FILE and DATABASE_URL which we always force
+    # to the absolute path so there is no ambiguity.
+    from dotenv import dotenv_values
+    env_vals = dotenv_values(ENV_FILE)
+
+    # Always force these two — they must be absolute paths, not relatives
+    os.environ["COGNILOAD_ENV_FILE"] = str(ENV_FILE)
+    os.environ["DATABASE_URL"]       = env_vals.get("DATABASE_URL") or f"sqlite:///{db_path}"
+    os.environ["COGNILOAD_STATIC_DIR"] = str(DIST_DIR)
+
+    # Set remaining values only if not already present
+    for key, value in env_vals.items():
+        if key not in os.environ and value is not None:
+            os.environ[key] = value
+
+    print(f"[ENV] DATABASE_URL = {os.environ['DATABASE_URL']}")
+
+
+def run_migrations() -> None:
+    """Run database migrations before the backend starts.
+
+    Adds any missing tables/columns to an existing database so that users
+    who installed an older build can still log in without losing their data.
+    Safe to call on every startup — checks existence before altering.
+    """
+    backend_dir = str(BACKEND_DIR)
+    if backend_dir not in sys.path:
+        sys.path.insert(0, backend_dir)
+
+    try:
+        import importlib
+        # Force a fresh import so we always get the current migrate.py,
+        # not a stale cached version from a previous run in the same process.
+        if "migrate" in sys.modules:
+            del sys.modules["migrate"]
+        # Also clear cached config so it re-reads the now-pinned env vars
+        for mod in ("config", "core.config"):
+            if mod in sys.modules:
+                del sys.modules[mod]
+
+        migrate = importlib.import_module("migrate")
+        migrate.run()
+        print("[DB] Migrations applied.")
+    except Exception:
+        print("[DB] Migration warning (non-fatal):")
+        print(traceback.format_exc())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -117,8 +213,9 @@ def start_backend(port: int) -> threading.Thread:
     global _backend_start_error
     _backend_start_error = None
 
-    os.environ["COGNILOAD_ENV_FILE"] = str(ENV_FILE)
-    os.environ["COGNILOAD_STATIC_DIR"] = str(DIST_DIR)
+    # env vars (COGNILOAD_ENV_FILE, DATABASE_URL, COGNILOAD_STATIC_DIR) were
+    # already pinned into os.environ by ensure_env() in main(). No need to
+    # set them again here.
 
     # Make `main.py` (and the config/core/routes/... modules it imports)
     # importable, the same way cwd=BACKEND_DIR made them importable for the
@@ -274,11 +371,17 @@ def main() -> None:
 
     _port = args.port
 
-    # Prepare environment
+    # Prepare environment — creates .env if needed AND pins DATABASE_URL,
+    # COGNILOAD_ENV_FILE etc. into os.environ before any backend import.
     ensure_env(args.port)
+
+    # Apply any pending DB schema migrations (add missing tables/columns).
+    # Must run after ensure_env() so DATABASE_URL is already pinned.
+    run_migrations()
 
     # Start backend
     _backend_thread = start_backend(args.port)
+
 
     # Show splash window while waiting
     show_splash(args.port)
