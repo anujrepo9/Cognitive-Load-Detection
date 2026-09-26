@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
 import {
@@ -51,14 +51,49 @@ export default function Dashboard() {
   const [predictions,  setPredictions]  = useState(0)
   const [modelInfo,    setModelInfo]    = useState(null)
 
-  // Session timer
+  // Session timer — survives page navigation (component remount).
+  //
+  // On remount all refs reset to null/0. Because session_id hasn't changed,
+  // the dep-array effect never fires and elapsed stays 0.
+  //
+  // Fix: seed refs at declaration time using start_time (UTC-safe: backend
+  // always sends Z suffix). The effect then only handles idle resets.
+  const mountElapsed = (
+    session?.start_time && trackingState === "tracking"
+      ? Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 1000))
+      : (session?.duration_seconds ?? 0)
+  )
+  const localTimerStartRef = useRef(trackingState === "tracking" ? Date.now() : null)
+  const baseSecondsRef     = useRef(mountElapsed)
+
+  // Immediately reflect mount-time elapsed so there's no 0 flash on remount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (mountElapsed > 0) setElapsed(mountElapsed) }, [])
+
   useEffect(() => {
-    const tick = setInterval(
-      () => setElapsed(session?.start_time ? Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 1000)) : 0),
-      1000,
-    )
+    if (trackingState === "idle") {
+      localTimerStartRef.current = null
+      baseSecondsRef.current     = 0
+      setElapsed(0)
+    }
+  }, [trackingState])
+
+  useEffect(() => {
+    if (!session?.session_id) return
+    if (trackingState !== "tracking") return
+    // Re-anchor only when session actually changes (not on plain remount where
+    // localTimerStartRef is already seeded from mount-time start_time above).
+    if (localTimerStartRef.current === null) {
+      baseSecondsRef.current     = session?.duration_seconds ?? 0
+      localTimerStartRef.current = Date.now()
+    }
+    const tick = setInterval(() => {
+      if (localTimerStartRef.current === null) { setElapsed(0); return }
+      const localMs = Date.now() - localTimerStartRef.current
+      setElapsed(Math.max(0, baseSecondsRef.current + Math.floor(localMs / 1000)))
+    }, 1000)
     return () => clearInterval(tick)
-  }, [session?.session_id, session?.start_time, trackingState])
+  }, [session?.session_id, trackingState])
 
   // React to WebSocket prediction pushes
   useEffect(() => {

@@ -51,45 +51,67 @@ export default function LiveMonitoring() {
 
   const prevKeyEvents = useRef(0)
 
-  // Session timer — freeze when paused or idle.
-  // We track how many ms have been spent in the paused state so we can subtract
-  // them from the wall-clock diff (session.start_time is fixed by the backend).
-  const pausedSinceRef  = useRef(null)   // timestamp when the current pause began
-  const totalPausedMsRef = useRef(0)     // accumulated ms spent paused this session
+  // Session timer — survives page navigation (component remount).
+  //
+  // Problem: on remount all refs reset to their initial values (null/0).
+  // useEffect only re-fires when deps *change* — but session is already live in
+  // context and its id/duration_seconds haven't changed, so the effect never
+  // runs and the timer stays at 0.
+  //
+  // Fix: compute the mount-time base directly from start_time (UTC-safe: the
+  // backend always serialises with a Z/+00:00 suffix via Pydantic's _as_utc
+  // validator), then let the effect only handle subsequent state transitions
+  // (pause / resume / end). This way the timer is correct the instant the
+  // component mounts regardless of whether the effect fires.
+  const mountBaseRef    = useRef(
+    // Seed from start_time on mount so remounts resume at the correct offset.
+    // new Date() on a string with Z/+00:00 is always UTC-correct in all browsers.
+    session?.start_time && trackingState === "tracking"
+      ? Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 1000))
+      : (session?.duration_seconds ?? 0)
+  )
+  const localStartRef   = useRef(trackingState === "tracking" ? Date.now() : null)
+  const baseSecondsRef  = useRef(mountBaseRef.current)
+  const pausedSinceRef  = useRef(trackingState === "paused" ? Date.now() : null)
+  const totalPausedMsRef = useRef(0)
 
   useEffect(() => {
     if (trackingState === "idle") {
-      // Session ended — clear everything
-      pausedSinceRef.current  = null
+      pausedSinceRef.current   = null
       totalPausedMsRef.current = 0
+      localStartRef.current    = null
+      baseSecondsRef.current   = 0
       setElapsed(0)
       return undefined
     }
 
     if (trackingState === "paused") {
-      // Mark the start of this pause (only once per pause transition)
       if (pausedSinceRef.current === null) pausedSinceRef.current = Date.now()
-      // No interval needed while paused — elapsed stays frozen
       return undefined
     }
 
-    // trackingState === "tracking" (resumed or freshly started)
+    // trackingState === "tracking"
     if (pausedSinceRef.current !== null) {
-      // We're resuming: bank the paused duration and clear the marker
       totalPausedMsRef.current += Date.now() - pausedSinceRef.current
       pausedSinceRef.current = null
     }
 
-    const sessionStart = session?.start_time ? new Date(session.start_time).getTime() : null
+    // Only re-anchor when switching to a *different* session (new start).
+    // On a plain remount session_id is the same, so we keep mountBaseRef
+    // (already seeded above) and just restart the interval.
+    if (localStartRef.current === null) {
+      baseSecondsRef.current = mountBaseRef.current
+      localStartRef.current  = Date.now()
+    }
+
     const tick = setInterval(() => {
-      if (!sessionStart) { setElapsed(0); return }
-      const activeMs = Date.now() - sessionStart - totalPausedMsRef.current
-      setElapsed(Math.max(0, Math.floor(activeMs / 1000)))
+      if (localStartRef.current === null) { setElapsed(0); return }
+      const localElapsedMs = Date.now() - localStartRef.current - totalPausedMsRef.current
+      setElapsed(Math.max(0, baseSecondsRef.current + Math.floor(localElapsedMs / 1000)))
     }, 1000)
     return () => clearInterval(tick)
-  // trackingState drives pause/resume transitions; session id/start guards resets
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.session_id, session?.start_time, trackingState])
+  }, [session?.session_id, trackingState])
 
   // React to prediction pushes (both WebSocket and HTTP response via onPrediction callback)
   useEffect(() => {
@@ -141,6 +163,11 @@ export default function LiveMonitoring() {
     }
     prevKeyEvents.current = current
   }, [quality?.keyEvents, trackingState])
+
+  // WPM chart: filter out zeros (shouldn't exist, but guard anyway)
+  const validWpmHistory = wpmHistory.filter((p) => p.wpm > 0)
+  // Recharts LineChart needs ≥2 points to draw a line; show dots for single point
+  const wpmDot = validWpmHistory.length === 1 ? { r: 4, fill: "#10B981" } : false
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
@@ -254,19 +281,34 @@ export default function LiveMonitoring() {
               </p>
             </div>
           </div>
-          {wpmHistory.filter((p) => p.wpm > 0).length < 1
+          {validWpmHistory.length < 1
             ? <EmptyState icon={Keyboard} title="No typing data"
                 description="Type continuously during a session to see your WPM trend." />
             : (
               <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={wpmHistory.filter((p) => p.wpm > 0)} aria-label="Words per minute over time chart">
+                <LineChart data={validWpmHistory} aria-label="Words per minute over time chart">
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.12)" vertical={false} />
                   <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false}
-                    tickFormatter={(v) => `${v} wpm`} />
+                  <YAxis
+                    domain={([dataMin, dataMax]) => {
+                      const pad = Math.max(10, Math.ceil((dataMax - dataMin) * 0.2))
+                      return [Math.max(0, dataMin - pad), dataMax + pad]
+                    }}
+                    tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false}
+                    tickFormatter={(v) => `${v}`}
+                    label={{ value: "wpm", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 10, fill: "#94A3B8" } }}
+                  />
                   <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} wpm`, "Typing speed"]} />
-                  <Line type="monotone" dataKey="wpm" stroke="#10B981" strokeWidth={2}
-                    dot={false} name="WPM" />
+                  <Line
+                    type="monotone"
+                    dataKey="wpm"
+                    stroke="#10B981"
+                    strokeWidth={2}
+                    dot={wpmDot}
+                    activeDot={{ r: 5 }}
+                    isAnimationActive={validWpmHistory.length > 1}
+                    name="WPM"
+                  />
                 </LineChart>
               </ResponsiveContainer>
             )}
