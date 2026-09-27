@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef } from "react";
 import { behaviorAPI } from "../services/api";
 
 // Minimum key events required before a keyboard-driven flush is sent.
-const MIN_KEY_EVENTS = 2;
+// Lowered from 2 → 1 so a single keypress in a window is still recorded.
+// Mouse-only flushes are still gated by MIN_MOUSE_EVENTS_FOR_FLUSH below.
+const MIN_KEY_EVENTS = 1;
 
 // If the user has no keyboard activity but has significant mouse activity,
 // flush anyway so mouse-only sessions still produce predictions.
@@ -139,9 +141,15 @@ export function useSessionTracker({
       (total, event) => total + (event.distance || 0),
       0,
     );
+    // Use upTime (performance.now ms, same clock as flightTime) not timestamp
+    // (Date.now epoch ms) so pause gaps are measured on a consistent clock.
     const pauses = keyEvents
       .slice(1)
-      .map((event, index) => event.timestamp - keyEvents[index].timestamp)
+      .map((event, index) => {
+        const prev = keyEvents[index];
+        // downTime of current key minus upTime of previous key = gap between keys
+        return (event.upTime - prev.upTime);
+      })
       .filter((gap) => gap > 2000);
 
     // WPM is words-in-this-interval / minutes-in-this-interval.
@@ -158,12 +166,11 @@ export function useSessionTracker({
         : null;
 
     return {
-      // Backend BehaviorPayload.typing_wpm is `int = 0` (not Optional) — send 0
-      // when we don't have enough data rather than null, which causes a 422.
-      // The separate _wpm_display field carries the true null so the UI can show
-      // "—" instead of "0" until there's a real reading.
-      typing_wpm: wpm ?? 0,
-      _wpm_display: wpm, // null = not enough data yet; used by flush() below
+      // BehaviorPayload.typing_wpm is Optional[int] = None on the backend.
+      // Send null when there aren't enough words/time so the DB stores NULL
+      // (meaning "no data this window") rather than 0 (which looks like real data).
+      typing_wpm: wpm,      // null when below MIN_WORDS_FOR_WPM threshold
+      _wpm_display: wpm,    // null = not enough data yet; used by flush() below
       avg_hold_ms: Math.round(averageHold),
       avg_flight_ms: Math.round(average(flights)),
       error_rate:
@@ -173,8 +180,10 @@ export function useSessionTracker({
       pause_count: pauses.length,
       avg_pause_ms: Math.round(average(pauses)),
       typing_variance: Number(variation.toFixed(4)),
-      chars_per_min: sessionMinutes > 0
-        ? Math.round((totalKeyCount.current + keyEvents.length) / sessionMinutes)
+      // Use interval window (not cumulative session) so chars_per_min reflects
+      // THIS flush window's typing rate, consistent with how typing_wpm is computed.
+      chars_per_min: intervalMinutes > 0
+        ? Math.round(keyEvents.length / intervalMinutes)
         : 0,
       avg_cursor_speed: Math.round(average(speeds)),
       click_rate:
@@ -216,7 +225,7 @@ export function useSessionTracker({
     // Use it for the UI callback so the stat card shows "—" rather than "0".
     const displayWpm = features._wpm_display;
     // Strip _wpm_display before sending — it's a UI-only field, not part of
-    // BehaviorPayload. The backend receives typing_wpm as int (0 when no data).
+    // BehaviorPayload. The backend receives typing_wpm as null when no data.
     const { _wpm_display, ...apiPayload } = features;
     // Reset buffer before the API call so stale events don't accumulate
     resetBuffer();

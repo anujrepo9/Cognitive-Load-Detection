@@ -72,8 +72,17 @@ def ask_label() -> str | None:
 
 
 def build_payload(row: dict) -> dict:
-    """Extract only the API feature fields (drop metadata/label)."""
-    return {k: row.get(k, 0) for k in API_FEATURES}
+    """Extract only the API feature fields (drop metadata/label).
+
+    typing_wpm is nullable (None when fewer than 2 space-presses occurred
+    in the window).  All other features default to 0 when absent.
+    """
+    payload = {k: row.get(k, 0) for k in API_FEATURES}
+    # Preserve None for typing_wpm so the backend can distinguish
+    # "no typing this window" (None) from a genuine zero-WPM result (0).
+    if "typing_wpm" in row and row["typing_wpm"] is None:
+        payload["typing_wpm"] = None
+    return payload
 
 
 def send_rows_to_api(rows: list, cfg: CollectorConfig) -> tuple[list, list]:
