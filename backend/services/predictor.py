@@ -102,7 +102,13 @@ class Predictor:
 
     def _ml_predict(self, payload: BehaviorPayload) -> dict:
         pipeline = get_pipeline()
-        feat_dict = {f: getattr(payload, f, 0) for f in FEATURE_ORDER}
+        # getattr(..., 0) only covers a *missing* attribute — Optional fields
+        # like typing_wpm can legitimately be present but set to None, which
+        # would otherwise reach the scaler/model as a raw None and crash.
+        feat_dict = {
+            f: (v if (v := getattr(payload, f, 0)) is not None else 0)
+            for f in FEATURE_ORDER
+        }
         X = pipeline.transform(feat_dict)
 
         proba   = self._model.predict_proba(X)[0]
@@ -121,8 +127,13 @@ class Predictor:
     def _rule_predict(self, payload: BehaviorPayload) -> dict:
         score = 0
 
-        if payload.typing_wpm < 35:       score += 2
-        elif payload.typing_wpm > 55:     score -= 1
+        # typing_wpm is Optional[int] — None means "not enough data yet"
+        # (e.g. the very first tick of a session). Treat that as neutral
+        # instead of crashing on `None < 35`.
+        typing_wpm = payload.typing_wpm
+        if typing_wpm is not None:
+            if typing_wpm < 35:       score += 2
+            elif typing_wpm > 55:     score -= 1
 
         if payload.error_rate > 0.08:     score += 2
         elif payload.error_rate < 0.03:   score -= 1

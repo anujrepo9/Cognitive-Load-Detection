@@ -181,7 +181,7 @@ def export_csv(
             writer.writerow([
                 sess.id,
                 b.created_at.isoformat() if b.created_at else "",
-                b.typing_wpm if b.typing_wpm else "",
+                b.typing_wpm if b.typing_wpm is not None else "",  # 0 is valid; only NULL → blank
                 b.chars_per_min, b.avg_hold_ms, b.avg_flight_ms,
                 b.error_rate, b.pause_count, b.avg_pause_ms, b.typing_variance,
                 b.avg_cursor_speed, b.movement_distance, b.click_rate,

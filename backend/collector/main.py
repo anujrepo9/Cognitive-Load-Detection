@@ -74,14 +74,20 @@ def ask_label() -> str | None:
 def build_payload(row: dict) -> dict:
     """Extract only the API feature fields (drop metadata/label).
 
-    typing_wpm is nullable (None when fewer than 2 space-presses occurred
-    in the window).  All other features default to 0 when absent.
+    typing_wpm is Optional[int] — None means "not enough typing data this
+    window".  We preserve None explicitly; everything else defaults to 0 when
+    the key is absent from the row dict.
     """
-    payload = {k: row.get(k, 0) for k in API_FEATURES}
-    # Preserve None for typing_wpm so the backend can distinguish
-    # "no typing this window" (None) from a genuine zero-WPM result (0).
-    if "typing_wpm" in row and row["typing_wpm"] is None:
-        payload["typing_wpm"] = None
+    payload = {}
+    for k in API_FEATURES:
+        val = row.get(k, 0)
+        # metrics.py now returns None for typing_wpm when data is insufficient.
+        # row.get() would return None (not 0) in that case since the key IS
+        # present; we must NOT replace it with 0.
+        if val is None and k == "typing_wpm":
+            payload[k] = None
+        else:
+            payload[k] = val if val is not None else 0
     return payload
 
 
@@ -117,9 +123,10 @@ def send_rows_to_api(rows: list, cfg: CollectorConfig) -> tuple[list, list]:
 
 def print_row(row: dict):
     """Print a compact summary line to the terminal."""
+    wpm_str = f"{row['typing_wpm']:>3}" if row["typing_wpm"] is not None else "  —"
     print(
         f"  [{row['timestamp']}]  "
-        f"WPM={row['typing_wpm']:>3}  "
+        f"WPM={wpm_str}  "
         f"Hold={row['avg_hold_ms']:>6} ms  "
         f"Error={row['error_rate']:.2%}  "
         f"Idle={row['idle_time_pct']:.0%}  "
