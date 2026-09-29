@@ -97,6 +97,7 @@ _backend_thread: threading.Thread | None = None
 _backend_start_error: str | None = None
 _tray_icon = None
 _port = 8000
+_collector_process: subprocess.Popen | None = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -297,6 +298,7 @@ def open_app_in_browser() -> None:
 
 def quit_app(icon=None, item=None) -> None:
     print("[APP] Quit requested")
+    stop_collector()
     stop_backend()
     if icon:
         icon.stop()
@@ -361,6 +363,112 @@ def show_splash(port: int) -> None:
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Python interpreter resolution (Windows-safe)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _find_collector_python() -> str:
+    """Return the Python interpreter to use for the collector subprocess.
+
+    On Windows the .venv lives under Scripts\\ not bin\\, and we prefer
+    pythonw.exe so no black console window flashes on screen.
+
+    When frozen by PyInstaller sys.executable is the .exe itself — never
+    pass that to Popen or the subprocess just re-launches the app.
+    """
+    import shutil as _shutil
+
+    # Dev mode: look for .venv / venv / env next to the project root
+    if not getattr(sys, "frozen", False):
+        for venv_rel in (".venv", "venv", "env"):
+            for py_name in ("pythonw.exe", "python.exe", "pythonw", "python"):
+                # Windows venv
+                candidate = BASE_DIR / venv_rel / "Scripts" / py_name
+                if candidate.exists():
+                    return str(candidate)
+                # Unix venv (fallback)
+                candidate = BASE_DIR / venv_rel / "bin" / py_name
+                if candidate.exists():
+                    return str(candidate)
+        # No venv — the running interpreter is real in dev mode
+        return sys.executable
+
+    # Frozen: sys.executable is the .exe — find a real Python on PATH
+    for name in ("pythonw", "python"):
+        found = _shutil.which(name)
+        if found:
+            return found
+    return "python"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Global keyboard/mouse collector (pynput — captures ALL OS keystrokes)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def start_collector(port: int) -> None:
+    """Launch the pynput collector as a background subprocess.
+
+    WHY: window.addEventListener('keydown') in the React/WebView2 frontend
+    only fires when the CogniLoad window itself has focus.  When the user is
+    typing in VS Code, Word, a browser — wherever cognitive load actually
+    matters — the WebView2 loses focus and captures zero keystrokes.
+
+    pynput intercepts keystrokes at the Windows message-hook level (WH_KEYBOARD_LL),
+    so it works regardless of which window is focused.
+
+    Token flow: POST /auth/register-collector (called by the frontend after
+    every login) writes the JWT into collector_config.json.  The collector
+    reads that file on each flush and authenticates its /behavior POSTs.
+    """
+    global _collector_process
+    collector_main = BASE_DIR / "backend" / "collector" / "main.py"
+    if not collector_main.exists():
+        print("[COLLECTOR] main.py not found — skipping")
+        return
+
+    python_exe = _find_collector_python()
+    print(f"[COLLECTOR] Using interpreter: {python_exe}")
+
+    cmd = [
+        python_exe,
+        str(collector_main),
+        "--api-url", f"http://127.0.0.1:{port}",
+        "--interval", "15",
+        "--online-predict",   # also POST to /predict → WS broadcast
+    ]
+    try:
+        # CREATE_NO_WINDOW prevents the black console flash on Windows
+        flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        log_path = DATA_DIR / "collector.log"
+        _collector_process = subprocess.Popen(
+            cmd,
+            cwd=str(BASE_DIR / "backend" / "collector"),
+            creationflags=flags,
+            stdout=open(log_path, "a", encoding="utf-8"),
+            stderr=subprocess.STDOUT,
+        )
+        print(f"[COLLECTOR] Started pid={_collector_process.pid}  log={log_path}")
+    except FileNotFoundError:
+        print(f"[COLLECTOR] Interpreter not found: {python_exe}")
+        print("[COLLECTOR] Run: pip install pynput  (in your venv)")
+    except Exception as exc:
+        print(f"[COLLECTOR] Failed to start: {exc}")
+
+
+def stop_collector() -> None:
+    """Terminate the collector subprocess gracefully."""
+    global _collector_process
+    if _collector_process and _collector_process.poll() is None:
+        _collector_process.terminate()
+        try:
+            _collector_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _collector_process.kill()
+        print("[COLLECTOR] Stopped")
+    _collector_process = None
+
 def main() -> None:
     global _backend_thread, _port
 
@@ -406,6 +514,11 @@ def main() -> None:
         stop_backend()
         sys.exit(1)
 
+    # Start the global keyboard/mouse collector after backend is up.
+    # pynput captures keystrokes system-wide, unlike the browser tracker
+    # which only sees keys typed inside the WebView2 window.
+    start_collector(args.port)
+
     # Open the app in browser
     if not args.no_browser:
         webbrowser.open(f"http://127.0.0.1:{args.port}")
@@ -421,6 +534,7 @@ def main() -> None:
         except KeyboardInterrupt:
             pass
         finally:
+            stop_collector()
             stop_backend()
 
 

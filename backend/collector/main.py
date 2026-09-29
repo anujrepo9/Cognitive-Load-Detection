@@ -71,23 +71,27 @@ def ask_label() -> str | None:
         return None
 
 
+# Fields the backend schema declares as int (not float).
+# metrics.py returns these as float; we cast here so Pydantic doesn't 422.
+_INT_FIELDS = {"chars_per_min", "pause_count", "avg_pause_ms"}
+
 def build_payload(row: dict) -> dict:
     """Extract only the API feature fields (drop metadata/label).
 
-    typing_wpm is Optional[int] — None means "not enough typing data this
-    window".  We preserve None explicitly; everything else defaults to 0 when
-    the key is absent from the row dict.
+    typing_wpm  → Optional[int]: preserve None (= not enough data this window).
+    _INT_FIELDS → int: metrics.py returns floats; cast to int to satisfy schema.
+    everything else → float, defaulting to 0 if absent.
     """
     payload = {}
     for k in API_FEATURES:
         val = row.get(k, 0)
-        # metrics.py now returns None for typing_wpm when data is insufficient.
-        # row.get() would return None (not 0) in that case since the key IS
-        # present; we must NOT replace it with 0.
-        if val is None and k == "typing_wpm":
-            payload[k] = None
+        if k == "typing_wpm":
+            # None means insufficient data — send as JSON null, not 0
+            payload[k] = int(val) if val is not None else None
+        elif k in _INT_FIELDS:
+            payload[k] = int(val) if val is not None else 0
         else:
-            payload[k] = val if val is not None else 0
+            payload[k] = float(val) if val is not None else 0.0
     return payload
 
 

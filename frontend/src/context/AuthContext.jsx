@@ -4,9 +4,8 @@ import { authAPI } from "../services/api"
 
 const AuthContext = createContext(null)
 
-// Must match the BASE in api.js: blank or localhost VITE_API_URL → "/api" for the Vite proxy.
 const _rawApiUrl = import.meta.env.VITE_API_URL
-const _isLocalhost = _rawApiUrl && /localhost|127\.0\.0\.1/.test(_rawApiUrl)
+const _isLocalhost = _rawApiUrl && /localhost|127\\.0\\.0\\.1/.test(_rawApiUrl)
 const BASE = (!_rawApiUrl || _isLocalhost) ? "/api" : _rawApiUrl
 
 export function AuthProvider({ children }) {
@@ -19,7 +18,6 @@ export function AuthProvider({ children }) {
     const storedToken  = localStorage.getItem("token")
     const refreshToken = localStorage.getItem("refreshToken")
 
-    // No tokens — not logged in
     if (!storedToken && !refreshToken) {
       setUser(null)
       localStorage.removeItem("user")
@@ -27,18 +25,16 @@ export function AuthProvider({ children }) {
       return
     }
 
-    // Validate the stored access token.
-    // The axios interceptor will auto-refresh on 401/403 and retry, so
-    // .then() here means we have a confirmed valid (possibly just-refreshed) token.
     authAPI.profile()
       .then(({ data }) => {
         setUser(data)
         localStorage.setItem("user", JSON.stringify(data))
         setReady(true)
+        // Tell the backend to hand the current token to the local collector.
+        // Fire-and-forget: if the backend isn't running yet this is harmless.
+        _registerCollectorToken()
       })
       .catch(async () => {
-        // Both the original request AND the interceptor's refresh attempt failed.
-        // Try one final explicit refresh before giving up.
         const latestRefreshToken = localStorage.getItem("refreshToken")
         if (!latestRefreshToken) {
           _clearLocalSession()
@@ -53,13 +49,12 @@ export function AuthProvider({ children }) {
           })
           localStorage.setItem("token",        data.access_token)
           localStorage.setItem("refreshToken", data.refresh_token ?? latestRefreshToken)
-          // Fetch profile with the brand-new token
           const { data: profileData } = await authAPI.profile()
           setUser(profileData)
           localStorage.setItem("user", JSON.stringify(profileData))
           setReady(true)
+          _registerCollectorToken()
         } catch {
-          // Truly dead session — clear everything and send to login
           _clearLocalSession()
           setUser(null)
           setReady(true)
@@ -74,6 +69,9 @@ export function AuthProvider({ children }) {
     localStorage.setItem("refreshToken", refreshToken || "")
     localStorage.setItem("user",         JSON.stringify(userData))
     setUser(userData)
+    // Hand the new token to the collector so it can send keyboard/mouse data
+    // to /behavior on behalf of the logged-in user.
+    _registerCollectorToken()
   }
 
   const logout = async () => {
@@ -85,8 +83,6 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
-  // Don't render anything until auth state is confirmed — this guarantees
-  // no child component fires an API call before the token is valid.
   if (!ready) return null
 
   return (
@@ -94,6 +90,25 @@ export function AuthProvider({ children }) {
       {children}
     </AuthContext.Provider>
   )
+}
+
+/**
+ * POST the current access token to /auth/register-collector.
+ * The backend writes it into collector_config.json so the pynput collector
+ * process can authenticate its /behavior pushes.
+ * Silently ignored if the endpoint is unavailable (non-desktop builds).
+ */
+function _registerCollectorToken() {
+  const token = localStorage.getItem("token")
+  if (!token) return
+  fetch(`${BASE}/auth/register-collector`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+    },
+    body: JSON.stringify({ access_token: token }),
+  }).catch(() => { /* desktop-only endpoint — ignore in web/CI */ })
 }
 
 function _clearLocalSession() {

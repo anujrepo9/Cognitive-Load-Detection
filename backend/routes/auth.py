@@ -144,3 +144,45 @@ def change_password(
     ).update({"revoked": True, "revoked_at": datetime.now(timezone.utc)})
     db.commit()
     return None
+
+
+# ── Collector token registration (desktop app only) ───────────────────────────
+
+import json as _json
+from pathlib import Path as _Path
+from pydantic import BaseModel as _BaseModel
+
+
+class _CollectorTokenBody(_BaseModel):
+    access_token: str
+
+
+@router.post("/register-collector", status_code=204)
+def register_collector_token(
+    body: _CollectorTokenBody,
+    current_user: User = Depends(get_current_user),
+):
+    """Write the caller's JWT into collector_config.json so the local
+    pynput collector can authenticate its /behavior pushes.
+    No-op in web/cloud builds where the collector directory does not exist.
+    """
+    collector_cfg = (
+        _Path(__file__).resolve().parent.parent / "collector" / "collector_config.json"
+    )
+    if not collector_cfg.parent.exists():
+        return None  # not a desktop build
+
+    cfg: dict = {}
+    if collector_cfg.exists():
+        try:
+            cfg = _json.loads(collector_cfg.read_text(encoding="utf-8"))
+        except Exception:
+            cfg = {}
+
+    cfg["api_token"] = body.access_token
+    cfg.setdefault("api_url", "http://127.0.0.1:8000")
+    cfg.setdefault("flush_interval", 15)
+    cfg.setdefault("offline_mode", False)
+
+    collector_cfg.write_text(_json.dumps(cfg, indent=2), encoding="utf-8")
+    return None

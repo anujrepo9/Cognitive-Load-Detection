@@ -229,7 +229,7 @@ Rename-Item scriptsuild_windows.bat.txt build_windows.bat
 **2. Run the build pipeline** (from project root in PowerShell / CMD):
 
 ```powershell
-.\scriptsuild_windows.bat
+.\scripts\build_windows.bat
 ```
 
 The script automatically:
@@ -255,6 +255,12 @@ equirements.txt`) + `pyinstaller`, `pystray`, `Pillow`
 | `installer\Output\CogniLoad_Setup_1.0.0.exe` | Full installer (requires Inno Setup during build) |
 
 > **Note:** If Inno Setup is not installed the build still completes successfully — only the installer step is skipped. The portable `dist\CogniLoad\CogniLoad.exe` is always produced.
+
+### To remove the builds
+
+```powershell
+Remove-Item -Recurse -Force .\build, .\dist -ErrorAction SilentlyContinue
+```
 
 ---
 
