@@ -8,8 +8,8 @@ export default function TrackingConsentDialog() {
     <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
       <ShieldCheck className="mb-3 h-8 w-8 text-accent" />
       <h2 id="tracking-consent-title" className="text-lg font-bold text-gray-900 dark:text-white">Allow behavioral tracking?</h2>
-      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">CogniLoad measures interaction patterns to estimate cognitive load. It sends aggregate timing, count, duration, mouse movement, scroll, and idle metrics.</p>
-      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Typed text, passwords, message content, and actual key values are never sent. Key events are used only in the browser to calculate aggregate timing and count metrics.</p>
+      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">CogniLoad measures interaction patterns to estimate cognitive load. On Windows it starts a local agent that records keyboard and mouse timing across all applications, not only this website tab.</p>
+      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Typed text, passwords, message content, and actual key values are never stored. Only aggregate timing, counts, mouse movement, scroll, and idle metrics are sent.</p>
       <div className="mt-5 flex justify-end gap-3">
         <button
           onClick={dismissConsent}

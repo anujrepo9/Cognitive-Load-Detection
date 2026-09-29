@@ -184,6 +184,9 @@ class CurrentSessionResponse(BaseModel):
     prediction_count:  int
     latest_load:       Optional[str]
     latest_confidence: Optional[float]
+    collector_running: bool = False
+    collector_mode:    str = "browser"
+    collector_error:   Optional[str] = None
 
     _normalize_start = field_validator("start_time", mode="before")(_as_utc)
 

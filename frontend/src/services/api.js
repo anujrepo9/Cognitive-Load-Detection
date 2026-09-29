@@ -129,6 +129,8 @@ export const behaviorAPI = {
 export const sessionAPI = {
   start:   ()     => api.post("/session/start"),
   current: ()     => api.get("/session/current"),
+  pause:   ()     => api.post("/session/pause"),
+  resume:  ()     => api.post("/session/resume"),
   end:     ()     => api.post("/session/end"),
 }
 

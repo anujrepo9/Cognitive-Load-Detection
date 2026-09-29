@@ -19,7 +19,18 @@ export function TrackingProvider({ children }) {
   const [networkOnline, setNetworkOnline] = useState(navigator.onLine)
   const [flushIntervalMs, setFlushIntervalMs] = useState(DEFAULT_FLUSH_MS)
   const [error, setError] = useState(null)
+  const [collectorRunning, setCollectorRunning] = useState(false)
+  const [collectorMode, setCollectorMode] = useState("browser")
+  const [collectorError, setCollectorError] = useState(null)
   const { status: websocketStatus, prediction: websocketPrediction } = useWebSocket(isAuth)
+
+  const applySessionPayload = useCallback((data) => {
+    if (!data) return
+    setSession(data)
+    setCollectorRunning(Boolean(data.collector_running))
+    setCollectorMode(data.collector_mode || "browser")
+    setCollectorError(data.collector_error || null)
+  }, [])
 
   const consentKey = user ? `cogniload.consent.${user.id}` : null
   const hasConsent = Boolean(consentKey && localStorage.getItem(consentKey) === CONSENT_VERSION)
@@ -32,7 +43,7 @@ export function TrackingProvider({ children }) {
       if (settingsResult.status === "rejected") throw settingsResult.reason
       setFlushIntervalMs((settingsResult.value.data?.flush_interval_sec || DEFAULT_FLUSH_MS / 1000) * 1000)
       if (sessionResult.status === "fulfilled") {
-        setSession(sessionResult.value.data)
+        applySessionPayload(sessionResult.value.data)
         // Restore tracking state so the UI reflects the active session in every
         // tab (e.g. when the user opens a new tab while a session is running).
         // Only promote from "idle" — never interrupt a start/pause/end transition.
@@ -42,6 +53,9 @@ export function TrackingProvider({ children }) {
         const status = sessionResult.reason?.response?.status
         if (status !== 404) throw sessionResult.reason
         setSession(null)
+        setCollectorRunning(false)
+        setCollectorMode("browser")
+        setCollectorError(null)
         // Ensure idle when backend confirms no active session
         setTrackingState((prev) =>
           ["starting", "ending"].includes(prev) ? prev : "idle"
@@ -52,7 +66,7 @@ export function TrackingProvider({ children }) {
       setBackendStatus("unavailable")
       setError("The backend is unavailable. Tracking cannot start until the connection is restored.")
     }
-  }, [isAuth])
+  }, [isAuth, applySessionPayload])
 
   useEffect(() => { refreshStatus() }, [refreshStatus])
   useEffect(() => {
@@ -80,7 +94,14 @@ export function TrackingProvider({ children }) {
   }, [websocketPrediction])
   useEffect(() => {
     if (!isAuth) {
-      setTrackingState("idle"); setSession(null); setPrediction(null); setError(null); setConsentOpen(false)
+      setTrackingState("idle")
+      setSession(null)
+      setPrediction(null)
+      setError(null)
+      setConsentOpen(false)
+      setCollectorRunning(false)
+      setCollectorMode("browser")
+      setCollectorError(null)
     }
   }, [isAuth])
 
@@ -93,13 +114,15 @@ export function TrackingProvider({ children }) {
     setTrackingState("starting"); setError(null)
     try {
       const { data } = await sessionAPI.start()
-      setSession(data); setTrackingState("tracking"); return true
+      applySessionPayload(data)
+      setTrackingState("tracking")
+      return true
     } catch {
       setTrackingState("idle"); setBackendStatus("unavailable")
       setError("Unable to start a tracking session. Retry after checking the backend connection.")
       return false
     }
-  }, [backendStatus, hasConsent, networkOnline])
+  }, [applySessionPayload, backendStatus, hasConsent, networkOnline])
 
   const acceptConsent = useCallback(async () => {
     if (consentKey) localStorage.setItem(consentKey, CONSENT_VERSION)
@@ -111,30 +134,77 @@ export function TrackingProvider({ children }) {
     setTrackingState("starting"); setError(null)
     try {
       const { data } = await sessionAPI.start()
-      setSession(data); setTrackingState("tracking"); return true
+      applySessionPayload(data)
+      setTrackingState("tracking")
+      return true
     } catch {
       setTrackingState("idle"); setBackendStatus("unavailable")
       setError("Unable to start a tracking session. Retry after checking the backend connection.")
       return false
     }
-  }, [backendStatus, consentKey, networkOnline])
-  const pauseTracking = useCallback(() => { if (trackingState === "tracking") setTrackingState("paused") }, [trackingState])
-  const resumeTracking = useCallback(() => { if (trackingState === "paused") setTrackingState("tracking") }, [trackingState])
+  }, [applySessionPayload, backendStatus, consentKey, networkOnline])
+  const pauseTracking = useCallback(async () => {
+    if (trackingState !== "tracking") return
+    try {
+      const { data } = await sessionAPI.pause()
+      applySessionPayload(data)
+      setTrackingState("paused")
+    } catch {
+      setError("Unable to pause the Windows collector. Try again.")
+    }
+  }, [applySessionPayload, trackingState])
+  const resumeTracking = useCallback(async () => {
+    if (trackingState !== "paused") return
+    try {
+      const { data } = await sessionAPI.resume()
+      applySessionPayload(data)
+      setTrackingState("tracking")
+    } catch {
+      setError("Unable to resume the Windows collector. Try again.")
+    }
+  }, [applySessionPayload, trackingState])
   const endTracking = useCallback(async () => {
     if (!["tracking", "paused"].includes(trackingState)) return
     setTrackingState("ending"); setError(null)
     try {
       await sessionAPI.end()
-      setSession(null); setQuality({ keyEvents: 0, mouseEvents: 0, ready: false }); setTrackingState("idle")
+      setSession(null)
+      setQuality({ keyEvents: 0, mouseEvents: 0, ready: false })
+      setCollectorRunning(false)
+      setCollectorMode("browser")
+      setCollectorError(null)
+      setTrackingState("idle")
     } catch (requestError) {
       if (requestError.response?.status === 404) { setSession(null); setTrackingState("idle"); return }
       setTrackingState("paused"); setError("Unable to end the session. Retry once the backend is reachable.")
     }
   }, [trackingState])
 
-  useSessionTracker({ active: trackingState === "tracking", flushIntervalMs, onPrediction: setPrediction, onQualityChange: setQuality, onError: setError })
+  const useBrowserTracker = trackingState === "tracking" && !collectorRunning
+  useSessionTracker({
+    active: useBrowserTracker,
+    flushIntervalMs,
+    onPrediction: setPrediction,
+    onQualityChange: setQuality,
+    onError: setError,
+  })
 
-  const value = useMemo(() => ({ trackingState, session, prediction, quality, backendStatus, websocketStatus, networkOnline, error, consentOpen, startTracking, pauseTracking, resumeTracking, endTracking, acceptConsent, dismissConsent: () => setConsentOpen(false), retry: refreshStatus }), [trackingState, session, prediction, quality, backendStatus, websocketStatus, networkOnline, error, consentOpen, startTracking, pauseTracking, resumeTracking, endTracking, acceptConsent, refreshStatus])
+  useEffect(() => {
+    if (trackingState === "tracking" && collectorRunning) {
+      setQuality({ keyEvents: 0, mouseEvents: 0, ready: true })
+    }
+  }, [trackingState, collectorRunning])
+
+  const value = useMemo(() => ({
+    trackingState, session, prediction, quality, backendStatus, websocketStatus,
+    networkOnline, error, consentOpen, collectorRunning, collectorMode, collectorError,
+    startTracking, pauseTracking, resumeTracking, endTracking, acceptConsent,
+    dismissConsent: () => setConsentOpen(false), retry: refreshStatus,
+  }), [
+    trackingState, session, prediction, quality, backendStatus, websocketStatus,
+    networkOnline, error, consentOpen, collectorRunning, collectorMode, collectorError,
+    startTracking, pauseTracking, resumeTracking, endTracking, acceptConsent, refreshStatus,
+  ])
   return <TrackingContext.Provider value={value}>{children}</TrackingContext.Provider>
 }
 

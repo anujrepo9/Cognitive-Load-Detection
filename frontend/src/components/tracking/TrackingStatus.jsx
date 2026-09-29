@@ -2,13 +2,18 @@ import { AlertTriangle, CheckCircle2, CirclePause, Radio, RefreshCw, WifiOff } f
 import { useTracking } from "../../context/TrackingContext"
 
 export default function TrackingStatus() {
-  const { trackingState, quality, backendStatus, websocketStatus, networkOnline, error, retry } = useTracking()
+  const {
+    trackingState, quality, backendStatus, websocketStatus, networkOnline,
+    error, retry, collectorRunning, collectorError,
+  } = useTracking()
 
   const qualityLabel = trackingState === "idle"
     ? "Waiting to start"
-    : quality.ready
-      ? "Ready"
-      : `${quality.keyEvents}/5 key events`
+    : collectorRunning
+      ? "Windows agent (all apps)"
+      : quality.ready
+        ? "This browser tab only"
+        : `${quality.keyEvents}/1 key events`
 
   const trackerLabel = trackingState === "tracking" ? "Tracking"
     : trackingState === "paused"  ? "Paused"
@@ -40,7 +45,16 @@ export default function TrackingStatus() {
         <div>
           <p className="text-xs text-gray-400">Data quality</p>
           <p className="mt-1 font-semibold text-gray-800 dark:text-white">{qualityLabel}</p>
-          <p className="text-xs text-gray-400">{quality.mouseEvents} mouse events</p>
+          <p className="text-xs text-gray-400">
+            {collectorRunning
+              ? "Keyboard and mouse across the whole PC"
+              : `${quality.mouseEvents} mouse events in this tab`}
+          </p>
+          {trackingState === "tracking" && !collectorRunning && collectorError && (
+            <p className="mt-1 text-xs text-warning">
+              System collector failed, so only this tab is measured. {collectorError}
+            </p>
+          )}
         </div>
 
         {/* Connection */}

@@ -17,13 +17,11 @@ export function useBehaviorTracker(enabled = true) {
     flushIntervalMs: DEFAULT_FLUSH_MS,
   })
 
-  // Load the user's tracking preferences before attaching global listeners.
   useEffect(() => {
     if (!enabled) {
       setSettings((current) => ({ ...current, loaded: true, trackingEnabled: false }))
       return
     }
-
     settingsAPI.get()
       .then(({ data }) => {
         setSettings({
@@ -42,27 +40,39 @@ export function useBehaviorTracker(enabled = true) {
   const windowStart = useRef(Date.now())
   const lastKey     = useRef({ key: null, downTime: null })
   const lastMouse   = useRef({ x: 0, y: 0, time: Date.now() })
-  const lastSpeed   = useRef(0)                              // FIX 3: for acceleration
+  const lastSpeed   = useRef(0)
   const idleTimer   = useRef(null)
   const idleStart   = useRef(null)
   const totalIdle   = useRef(0)
+
+  // ── Idle helpers ──────────────────────────────────────────────────────────
+  const startIdle = useCallback(() => {
+    if (!idleStart.current) idleStart.current = Date.now()
+  }, [])
+
+  const resetIdle = useCallback(() => {
+    if (idleStart.current) {
+      totalIdle.current += Date.now() - idleStart.current
+      idleStart.current = null
+    }
+    clearTimeout(idleTimer.current)
+    idleTimer.current = setTimeout(startIdle, 2000)
+  }, [startIdle])
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
   const onKeyDown = useCallback((e) => {
     lastKey.current = { key: e.key, downTime: performance.now() }
     resetIdle()
-  }, [])
+  }, [resetIdle])
 
   const onKeyUp = useCallback((e) => {
     const { key, downTime } = lastKey.current
     if (key !== e.key || downTime === null) return
-
     const holdTime = performance.now() - downTime
     const prev     = buffer.current.keyEvents.at(-1)
     const flightTime = prev ? downTime - prev._upTime : null
-
     buffer.current.keyEvents.push({
-      key:        e.key,
+      key,
       holdTime:   Math.round(holdTime),
       flightTime: flightTime ? Math.round(flightTime) : null,
       isError:    e.key === "Backspace",
@@ -79,11 +89,8 @@ export function useBehaviorTracker(enabled = true) {
     const dy   = e.clientY - lastMouse.current.y
     const dist = Math.sqrt(dx * dx + dy * dy)
     const speed = dist / dt
-
-    // FIX 3: track acceleration (change in speed over time)
     const accel = (speed - lastSpeed.current) / dt
     lastSpeed.current = speed
-
     buffer.current.mouseEvents.push({
       x: e.clientX, y: e.clientY,
       speed:        Math.round(speed),
@@ -93,65 +100,61 @@ export function useBehaviorTracker(enabled = true) {
     })
     lastMouse.current = { x: e.clientX, y: e.clientY, time: now }
     resetIdle()
-  }, [])
+  }, [resetIdle])
 
   const onMouseDown = useCallback(() => {
     buffer.current.mouseEvents.push({ type: "click", timestamp: Date.now() })
     resetIdle()
-  }, [])
+  }, [resetIdle])
 
   const onWheel = useCallback((e) => {
     buffer.current.scrollEvents.push({ deltaY: e.deltaY, timestamp: Date.now() })
     resetIdle()
-  }, [])
+  }, [resetIdle])
 
-  // ── Idle detection ────────────────────────────────────────────────────────
-  const resetIdle = () => {
-    if (idleStart.current) {
-      totalIdle.current += Date.now() - idleStart.current
-      idleStart.current = null
+  // ── Visibility / focus — mark idle when tab is hidden or window loses focus
+  //    This ensures idle_time_pct is correct even when the user switches apps.
+  const onVisibilityChange = useCallback(() => {
+    if (document.hidden) {
+      clearTimeout(idleTimer.current)
+      startIdle()
+    } else {
+      resetIdle()
     }
+  }, [startIdle, resetIdle])
+
+  const onWindowBlur = useCallback(() => {
     clearTimeout(idleTimer.current)
-    idleTimer.current = setTimeout(() => { idleStart.current = Date.now() }, 2000)
-  }
+    startIdle()
+  }, [startIdle])
+
+  const onWindowFocus = useCallback(() => {
+    resetIdle()
+  }, [resetIdle])
 
   // ── Feature extraction ────────────────────────────────────────────────────
   const extractFeatures = useCallback(() => {
     const { keyEvents, mouseEvents, scrollEvents, sessionStart } = buffer.current
-    const now     = Date.now()
-    const windowSec = (now - windowStart.current) / 1000          // seconds
-    const windowMin = windowSec / 60                               // minutes
-
-    // FIX 1: Remove the hard gate (keyEvents.length < 5 → return null).
-    // Windows with zero keys are valid data points — they show the user was
-    // idle or mouse-only. Send them with keyboard fields zeroed out so the
-    // database always has a complete record for every flush window.
-    // (typing_wpm stays null/0 when no keys were pressed, matching Python behaviour.)
+    const now       = Date.now()
+    const windowSec = (now - windowStart.current) / 1000
+    const windowMin = windowSec / 60
 
     const holds   = keyEvents.map((e) => e.holdTime)
     const flights = keyEvents.map((e) => e.flightTime).filter(Boolean)
     const errors  = keyEvents.filter((e) => e.isError).length
-    const backspaces = errors  // alias for clarity below
 
-    // FIX 2: Use the standard 5-chars-per-word WPM formula, matching metrics.py.
-    // Old code counted spaces as words — wrong and mismatched with the Python collector.
-    const netChars = keyEvents.filter((e) => !e.isError && e.key !== " ").length
+    const netChars  = keyEvents.filter((e) => !e.isError && e.key !== " ").length
     const typingWpm = (netChars > 0 && windowMin > 0)
       ? Math.round(netChars / (5 * windowMin))
-      : null   // null = "not enough typing", stored as SQL NULL — matches Python
+      : null
 
     const charsPerMin = windowMin > 0 ? Math.round(keyEvents.length / windowMin) : 0
+    const avgHold     = avg(holds)
+    const avgFlight   = avg(flights)
 
-    const avgHold   = avg(holds)
-    const avgFlight = avg(flights)
+    const netKeys   = keyEvents.length - errors
+    const errorRate = netKeys > 0 ? parseFloat((errors / netKeys).toFixed(4)) : 0
 
-    // FIX 2 (continued): error_rate denominator excludes backspaces themselves,
-    // matching the Python fix in metrics.py.
-    const netKeys  = keyEvents.length - backspaces
-    const errorRate = netKeys > 0 ? parseFloat((backspaces / netKeys).toFixed(4)) : 0
-
-    // FIX 4: Use 500 ms pause threshold to match metrics.py.
-    // Old code used 2000 ms — too high; pause_count was always 0.
     const PAUSE_THRESHOLD_MS = 500
     const pauses = []
     for (let i = 1; i < keyEvents.length; i++) {
@@ -159,10 +162,7 @@ export function useBehaviorTracker(enabled = true) {
       if (gap > PAUSE_THRESHOLD_MS) pauses.push(gap)
     }
 
-    // typing_variance: std of flight times / avg flight time (rhythm variance)
-    // Matches the Python FIX 4 in metrics.py — flight times capture rhythm
-    // disruptions far better than hold-time CV.
-    const flightStd = stdDev(flights)
+    const flightStd      = stdDev(flights)
     const typingVariance = avgFlight > 0
       ? parseFloat((flightStd / avgFlight).toFixed(4))
       : 0
@@ -173,18 +173,17 @@ export function useBehaviorTracker(enabled = true) {
     const totalDist = mouseEvents.filter((e) => e.distance != null)
       .reduce((s, e) => s + e.distance, 0)
 
-    const idlePct  = totalIdle.current / ((now - sessionStart) || 1)
+    // Capture any still-running idle period before computing the ratio
+    const currentIdleMs = idleStart.current ? Date.now() - idleStart.current : 0
+    const idlePct = (totalIdle.current + currentIdleMs) / ((now - sessionStart) || 1)
+
     const avgSpeed = avg(speeds)
-
-    // Smoothness: 1 − speed CV, matching Python metrics.py
-    const speedCv      = avgSpeed > 0 ? stdDev(speeds) / avgSpeed : 1
-    const smoothness   = parseFloat(Math.max(0.1, Math.min(1, 1 - speedCv)).toFixed(4))
-
-    // FIX 3: include avg_acceleration so the backend field is populated.
+    const speedCv  = avgSpeed > 0 ? stdDev(speeds) / avgSpeed : 1
+    const smoothness = parseFloat(Math.max(0.1, Math.min(1, 1 - speedCv)).toFixed(4))
     const avgAccel = avg(accels)
 
     return {
-      typing_wpm:          typingWpm,             // null when no typing — matches Python
+      typing_wpm:          typingWpm,
       chars_per_min:       charsPerMin,
       avg_hold_ms:         Math.round(avgHold),
       avg_flight_ms:       Math.round(avgFlight),
@@ -199,29 +198,29 @@ export function useBehaviorTracker(enabled = true) {
       scroll_rate:         windowMin > 0 ? parseFloat((scrollEvents.length / windowMin).toFixed(2)) : 0,
       idle_time_pct:       parseFloat(Math.min(idlePct, 0.95).toFixed(4)),
       avg_hover_ms:        0,
-      avg_acceleration:    Math.round(avgAccel),  // FIX 3: was always missing
+      avg_acceleration:    Math.round(avgAccel),
       movement_smoothness: smoothness,
     }
   }, [])
 
-  // ── Flush loop — sends to /predict so WS broadcast fires ─────────────────
+  // ── Flush ─────────────────────────────────────────────────────────────────
   const flush = useCallback(async () => {
     const features = extractFeatures()
     if (!features) return
     try {
       await behaviorAPI.predict(features)
     } catch {
-      // Graceful — offline queue handles retry
+      // offline queue handles retry
     }
-    // Reset buffers and window timer
     buffer.current.keyEvents    = []
     buffer.current.mouseEvents  = []
     buffer.current.scrollEvents = []
-    totalIdle.current = 0
+    totalIdle.current   = 0
+    idleStart.current   = null
     windowStart.current = Date.now()
   }, [extractFeatures])
 
-  // ── Dynamic interval — re-creates when flushIntervalMs changes ───────────
+  // ── Interval ──────────────────────────────────────────────────────────────
   const intervalRef = useRef(null)
   useEffect(() => {
     if (!trackerEnabled) return
@@ -229,6 +228,7 @@ export function useBehaviorTracker(enabled = true) {
     return () => clearInterval(intervalRef.current)
   }, [trackerEnabled, settings.flushIntervalMs, flush])
 
+  // ── Event listeners ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!trackerEnabled) return
     window.addEventListener("keydown",   onKeyDown)
@@ -236,20 +236,28 @@ export function useBehaviorTracker(enabled = true) {
     window.addEventListener("mousemove", onMouseMove)
     window.addEventListener("mousedown", onMouseDown)
     window.addEventListener("wheel",     onWheel, { passive: true })
+    // Tab visibility and OS-level window focus
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    window.addEventListener("blur",  onWindowBlur)
+    window.addEventListener("focus", onWindowFocus)
     return () => {
       window.removeEventListener("keydown",   onKeyDown)
       window.removeEventListener("keyup",     onKeyUp)
       window.removeEventListener("mousemove", onMouseMove)
       window.removeEventListener("mousedown", onMouseDown)
       window.removeEventListener("wheel",     onWheel)
+      document.removeEventListener("visibilitychange", onVisibilityChange)
+      window.removeEventListener("blur",  onWindowBlur)
+      window.removeEventListener("focus", onWindowFocus)
       clearTimeout(idleTimer.current)
     }
-  }, [trackerEnabled, onKeyDown, onKeyUp, onMouseMove, onMouseDown, onWheel])
+  }, [trackerEnabled, onKeyDown, onKeyUp, onMouseMove, onMouseDown, onWheel,
+      onVisibilityChange, onWindowBlur, onWindowFocus])
 
   return { extractFeatures }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0
 const stdDev = (arr) => {
   if (arr.length < 2) return 0

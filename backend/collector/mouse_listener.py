@@ -11,9 +11,9 @@ Phase 4 additions:
       element region (used for interaction dwell metrics).
 """
 
+import sys
 import time
 from collections import deque
-from pynput import mouse as ms
 
 from buffer import EventBuffer, MouseMoveEvent, MouseHoverEvent
 
@@ -42,11 +42,16 @@ class MouseListener:
         self._press_t = None
 
         self._last_click_time = 0.0    # for double-click detection
-        self._listener = ms.Listener(
-            on_move=self._on_move,
-            on_click=self._on_click,
-            on_scroll=self._on_scroll,
-        )
+        if sys.platform == "win32":
+            from win32_input import Win32MouseHook
+            self._listener = Win32MouseHook(self._on_move, self._on_click, self._on_scroll)
+        else:
+            from pynput import mouse as ms
+            self._listener = ms.Listener(
+                on_move=self._on_move,
+                on_click=self._on_click,
+                on_scroll=self._on_scroll,
+            )
 
     # ── pynput callbacks ──────────────────────────────────────────────────────
 
@@ -83,7 +88,7 @@ class MouseListener:
         if self._raw:
             self._raw.write("mousemove", f"({x},{y})", now * 1000)
 
-    def _on_click(self, x: int, y: int, button: ms.Button, pressed: bool):
+    def _on_click(self, x: int, y: int, button, pressed: bool):
         now = time.time()
 
         if pressed:

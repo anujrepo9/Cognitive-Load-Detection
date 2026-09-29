@@ -1,7 +1,7 @@
 """
 buffer.py — Thread-safe in-memory event buffer.
-All keyboard and mouse events land here first.
-Nothing touches disk until the 5-second flush.
+All keyboard, mouse, and window-focus events land here first.
+Nothing touches disk until the flush interval.
 """
 
 import threading
@@ -35,24 +35,33 @@ class MouseHoverEvent:
 
 
 @dataclass
+class WindowFocusEvent:
+    """Active window / application changed."""
+    title:   str
+    process: str
+    timestamp: float        # epoch ms
+
+
+@dataclass
 class BufferState:
-    key_events:   list = field(default_factory=list)
-    mouse_moves:  list = field(default_factory=list)
-    hovers:       list = field(default_factory=list)   # MouseHoverEvent
-    clicks:       int  = 0
-    double_clicks: int = 0
-    scrolls:      int  = 0
-    scroll_delta: float = 0.0
-    idle_start:   Optional[float] = None   # epoch ms when idle began
+    key_events:    list = field(default_factory=list)
+    mouse_moves:   list = field(default_factory=list)
+    hovers:        list = field(default_factory=list)   # MouseHoverEvent
+    window_events: list = field(default_factory=list)   # WindowFocusEvent
+    clicks:        int  = 0
+    double_clicks: int  = 0
+    scrolls:       int  = 0
+    scroll_delta:  float = 0.0
+    idle_start:    Optional[float] = None   # epoch ms when idle began
     idle_total_ms: float = 0.0
-    window_start: float  = 0.0            # epoch ms when this window opened
+    window_start:  float = 0.0             # epoch ms when this window opened
 
 
 class EventBuffer:
     """Thread-safe wrapper around BufferState."""
 
     def __init__(self):
-        self._lock = threading.Lock()
+        self._lock  = threading.Lock()
         self._state = BufferState()
 
     # ── Writers (called from listener threads) ────────────────────────────────
@@ -79,6 +88,11 @@ class EventBuffer:
     def add_hover(self, event: MouseHoverEvent):
         with self._lock:
             self._state.hovers.append(event)
+
+    def add_window_focus(self, event: WindowFocusEvent):
+        """Record an active-window change event."""
+        with self._lock:
+            self._state.window_events.append(event)
 
     def mark_idle_start(self, ts: float):
         with self._lock:
@@ -107,4 +121,3 @@ class EventBuffer:
     def set_window_start(self, ts: float):
         with self._lock:
             self._state.window_start = ts
-
