@@ -133,13 +133,14 @@ fn store_refresh_token(
 // ── Commands ───────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn register(
-    state: tauri::State<DbPath>,
+pub async fn register(
+    state: tauri::State<'_, DbPath>,
     name: String,
     email: String,
     password: String,
 ) -> Result<AuthResponse, String> {
     let db_path = &state.0;
+    let email = email.trim().to_lowercase();
     let conn = open(db_path).map_err(|e| e.to_string())?;
 
     // Check email not already taken
@@ -179,12 +180,13 @@ pub fn register(
 }
 
 #[tauri::command]
-pub fn login(
-    state: tauri::State<DbPath>,
+pub async fn login(
+    state: tauri::State<'_, DbPath>,
     email: String,
     password: String,
 ) -> Result<AuthResponse, String> {
     let db_path = &state.0;
+    let email = email.trim().to_lowercase();
     let conn = open(db_path).map_err(|e| e.to_string())?;
 
     let (id, name, email_stored, pw_hash, is_active) =
@@ -213,8 +215,8 @@ pub fn login(
 }
 
 #[tauri::command]
-pub fn logout(
-    state: tauri::State<DbPath>,
+pub async fn logout(
+    state: tauri::State<'_, DbPath>,
     refresh_token: String,
 ) -> Result<(), String> {
     let conn = open(&state.0).map_err(|e| e.to_string())?;
@@ -229,8 +231,8 @@ pub fn logout(
 }
 
 #[tauri::command]
-pub fn refresh_token(
-    state: tauri::State<DbPath>,
+pub async fn refresh_token(
+    state: tauri::State<'_, DbPath>,
     refresh_token: String,
 ) -> Result<AuthResponse, String> {
     let db_path = &state.0;
@@ -275,7 +277,7 @@ pub fn refresh_token(
     .map_err(|e| e.to_string())?;
 
     // Issue new tokens
-    let (_, name, email, _, _) = get_user_by_id(&conn, user_id)
+    let (_, name, email, _) = get_user_by_id(&conn, user_id)
         .map_err(|e| e.to_string())?
         .ok_or("User not found")?;
 
@@ -291,13 +293,13 @@ pub fn refresh_token(
 }
 
 #[tauri::command]
-pub fn get_current_user(
-    state: tauri::State<DbPath>,
+pub async fn get_current_user(
+    state: tauri::State<'_, DbPath>,
     token: String,
 ) -> Result<UserInfo, String> {
     let user_id = decode_access_token(&token)?;
     let conn = open(&state.0).map_err(|e| e.to_string())?;
-    let (id, name, email, _, _) = get_user_by_id(&conn, user_id)
+    let (id, name, email, _) = get_user_by_id(&conn, user_id)
         .map_err(|e| e.to_string())?
         .ok_or("User not found")?;
     Ok(UserInfo { id, name, email })
