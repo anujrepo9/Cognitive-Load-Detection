@@ -282,5 +282,4 @@ Remove-Item -Recurse -Force .\build, .\dist -ErrorAction SilentlyContinue
 ---
 
 ## 📄 License
-
-MIT
+© 2026 anuj_011 All rights reserved.

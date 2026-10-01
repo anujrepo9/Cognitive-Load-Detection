@@ -1,0 +1,83 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CogniLoad",
+  "version": "1.0.0",
+  "identifier": "com.cogniload.app",
+
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+
+  "app": {
+    "windows": [
+      {
+        "title": "CogniLoad — Cognitive Load Detection",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "trayIcon": {
+      "iconPath": "icons/icon.ico",
+      "iconAsTemplate": false,
+      "menuOnLeftClick": false,
+      "title": "CogniLoad"
+    }
+  },
+
+  "plugins": {
+    "shell": {
+      "open": false,
+      "sidecar": true,
+      "scope": [
+        {
+          "name": "sidecars/collector",
+          "sidecar": true
+        },
+        {
+          "name": "sidecars/ml_inference",
+          "sidecar": true
+        }
+      ]
+    },
+    "sql": {
+      "preloadConnections": ["sqlite:cogniload.db"]
+    },
+    "notification": {
+      "all": true
+    }
+  },
+
+  "bundle": {
+    "active": true,
+    "targets": "nsis",
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "resources": {
+      "sidecars/collector.exe":    "sidecars/collector.exe",
+      "sidecars/ml_inference.exe": "sidecars/ml_inference.exe",
+      "ml/saved_models/model.joblib":  "ml/saved_models/model.joblib",
+      "ml/saved_models/scaler.joblib": "ml/saved_models/scaler.joblib",
+      "ml/saved_models/meta.json":     "ml/saved_models/meta.json"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "languages": ["English"],
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}

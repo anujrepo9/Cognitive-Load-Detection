@@ -100,3 +100,23 @@ htmlcov/
 models/hand_landmarker.task
 
 build_windows.bat
+
+# ── Tauri / Rust ─────────────────────────────────────────────
+src-tauri/target/
+
+# ── Build artifacts ──────────────────────────────────────────
+build/*
+!build/build.bat
+
+# ── New collector runtime data ──────────────────────────────
+sidecars/collector/output/
+sidecars/collector/*.jsonl
+sidecars/collector/collector_config.json
+!sidecars/collector/collector_config.example.json
+
+# ── ML models ────────────────────────────────────────────────
+*.joblib
+*.pkl
+
+# Keep the production model if you intentionally want it in Git
+!sidecars/ml_inference/model.joblib
