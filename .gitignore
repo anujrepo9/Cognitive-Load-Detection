@@ -1,13 +1,13 @@
-# ── Python ────────────────────────────────────────────────────
+# ============================================================
+# Python
+# ============================================================
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
-*.pyw
+
 *.egg-info/
 *.egg
-dist/
-build/
 .eggs/
 
 # Virtual environments
@@ -16,107 +16,170 @@ venv/
 env/
 ENV/
 
-# ── Environment / secrets ─────────────────────────────────────
+
+# ============================================================
+# Environment / Secrets
+# ============================================================
 .env
 .env.local
 .env.*.local
 .env.development.local
 .env.test.local
 .env.production.local
-# Keep examples so teammates can bootstrap
+
+# Keep example environment files
 !.env.example
 !**/.env.example
 
 SECRET.MD
 
-# ── Database ──────────────────────────────────────────────────
+
+# ============================================================
+# Database
+# ============================================================
 *.db
 *.sqlite
 *.sqlite3
 
-# ── Logs ──────────────────────────────────────────────────────
+
+# ============================================================
+# Logs
+# ============================================================
 *.log
 *.log.*
 logs/
 npm-debug.log*
 
-# ── ML / data artifacts ───────────────────────────────────────
+
+# ============================================================
+# ML / Data
+# ============================================================
+
+# Existing model directory
 ml/saved_models/*.joblib
 ml/saved_models/*.pkl
 ml/saved_models/*.h5
 ml/saved_models/*.pt
 ml/saved_models/*.pth
-# Keep the meta file so model metadata is tracked
+
+# Keep model metadata
 !ml/saved_models/meta.json
 
+# Datasets
 ml/datasets/
 ml/dataset.csv
 
-# Collector runtime output
+# New sidecar ML models
+*.joblib
+*.pkl
+
+# Keep the production model if it is intentionally committed
+!sidecars/ml_inference/model.joblib
+
+
+# ============================================================
+# Collector Runtime Data
+# ============================================================
 backend/collector/output/
 backend/collector/pending_queue.jsonl
 backend/collector/collector_config.json
-# Keep the example config
+
+# Keep example config
 !backend/collector/collector_config.example.json
 
-# ── Frontend ──────────────────────────────────────────────────
+# New sidecar collector runtime data
+sidecars/collector/output/
+sidecars/collector/*.jsonl
+sidecars/collector/collector_config.json
+
+!sidecars/collector/collector_config.example.json
+
+
+# ============================================================
+# Node / React / Vite
+# ============================================================
 node_modules/
+frontend/node_modules/
+
 frontend/dist/
+dist/
+
 .pnp
 .pnp.js
+
 .next/
 out/
 
-# ── PyInstaller / packaging ───────────────────────────────────
-dist/
-build/
+
+# ============================================================
+# Tauri / Rust
+# ============================================================
+
+# Rust compilation output
+src-tauri/target/
+
+# Generated Tauri files
+src-tauri/gen/
+
+# Generated sidecar binaries
+src-tauri/sidecars/
+
+
+# ============================================================
+# Build / Packaging
+# ============================================================
+
+# Ignore generated build files
+build/*
+!build/build.bat
+
+# PyInstaller
 *.spec.bak
+
+# Installer output
 installer/Output/
 
-# ── IDE ───────────────────────────────────────────────────────
+
+# ============================================================
+# IDE
+# ============================================================
 .vscode/
 .idea/
+
 *.swp
 *.swo
 
-# ── OS ────────────────────────────────────────────────────────
+
+# ============================================================
+# OS
+# ============================================================
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ── Testing / coverage ────────────────────────────────────────
+
+# ============================================================
+# Testing / Coverage
+# ============================================================
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
 
-# ── Jupyter ───────────────────────────────────────────────────
+
+# ============================================================
+# Jupyter
+# ============================================================
 .ipynb_checkpoints/
 
-# ── Vercel ────────────────────────────────────────────────────
+
+# ============================================================
+# Vercel
+# ============================================================
 .vercel
 
-# ── Models (legacy entry kept) ────────────────────────────────
+
+# ============================================================
+# Legacy / Unused Model
+# ============================================================
 models/hand_landmarker.task
-
-build_windows.bat
-
-# ── Tauri / Rust ─────────────────────────────────────────────
-src-tauri/target/
-
-# ── Build artifacts ──────────────────────────────────────────
-build/*
-!build/build.bat
-
-# ── New collector runtime data ──────────────────────────────
-sidecars/collector/output/
-sidecars/collector/*.jsonl
-sidecars/collector/collector_config.json
-!sidecars/collector/collector_config.example.json
-
-# ── ML models ────────────────────────────────────────────────
-*.joblib
-*.pkl
-
-# Keep the production model if you intentionally want it in Git
-!sidecars/ml_inference/model.joblib

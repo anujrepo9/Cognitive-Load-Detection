@@ -1,59 +1,50 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
   "productName": "CogniLoad",
   "version": "1.0.0",
   "identifier": "com.cogniload.app",
-
   "build": {
     "frontendDist": "../frontend/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm --prefix frontend run dev",
-    "beforeBuildCommand": "npm --prefix frontend run build"
+    "beforeDevCommand": "cd frontend && npm run dev",
+    "beforeBuildCommand": "cd frontend && npm run build"
   },
-
   "app": {
     "windows": [
       {
-        "label": "main",
-        "title": "CogniLoad — Cognitive Load Detection",
+        "title": "CogniLoad",
         "width": 1280,
         "height": 800,
         "minWidth": 900,
         "minHeight": 600,
         "resizable": true,
-        "center": true
+        "fullscreen": false
       }
     ],
-    "security": { "csp": null },
+    "security": {
+      "csp": null
+    },
     "trayIcon": {
-      "iconPath": "icons/icon.ico",
-      "iconAsTemplate": false,
-      "menuOnLeftClick": false,
-      "tooltip": "CogniLoad"
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": false
     }
   },
-
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": "nsis",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
+      "icons/icon.icns",
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/collector",
-      "binaries/ml_inference"
+      "sidecars/cogniload_backend",
+      "sidecars/cogniload_collector"
     ],
-    "resources": {
-      "../ml/saved_models/*": "ml/saved_models/"
-    },
     "windows": {
       "nsis": {
-        "installMode": "currentUser",
-        "languages": ["English"],
-        "displayLanguageSelector": false
+        "installMode": "currentUser"
       }
     }
   }

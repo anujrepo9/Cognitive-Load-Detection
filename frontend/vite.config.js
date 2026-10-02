@@ -1,27 +1,27 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+// When running inside Tauri the React app talks directly to the
+// Python backend on localhost:8000.  The proxy is only needed in
+// plain-browser dev mode.
+const isTauriBuild = process.env.TAURI_ENV_PLATFORM !== undefined;
 
 export default defineConfig({
   plugins: [react()],
   server: {
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        // No rewrite — backend mounts all routes under /api already,
-        // so /api/auth/login proxies straight to http://localhost:8000/api/auth/login
-      },
-      '/ws': {
-        target: 'ws://localhost:8000',
-        changeOrigin: true,
-        ws: true,
-        configure: (proxy) => {
-          proxy.on('error', (err) => {
-            if (['ECONNABORTED', 'ECONNRESET', 'EPIPE'].includes(err.code)) return
-            console.error('[ws proxy]', err.message)
-          })
+    port: 5173,
+    proxy: isTauriBuild
+      ? {}
+      : {
+          "/api": {
+            target: "http://localhost:8000",
+            changeOrigin: true,
+          },
         },
-      },
-    },
   },
-})
+  build: {
+    // Tauri expects the output in frontend/dist
+    outDir: "dist",
+    emptyOutDir: true,
+  },
+});
