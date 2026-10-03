@@ -29,7 +29,7 @@ export default function History() {
     if (from) params.from_date = from
     if (to)   params.to_date   = to
     dashboardAPI.history(params)
-      .then(({ data }) => {
+      .then((data) => {
         setSessions(data.sessions || [])
         setTotal(data.total || 0)
         setTotalPages(data.total_pages || 1)
@@ -52,7 +52,7 @@ export default function History() {
     setExporting(true); setExportErr(null)
     try {
       const res = await reportsAPI.export()
-      const url = URL.createObjectURL(new Blob([res.data]))
+      const url = URL.createObjectURL(new Blob([res]))
       const a   = document.createElement("a")
       a.href     = url
       a.download = `cogniload_sessions_${new Date().toISOString().slice(0, 10)}.csv`

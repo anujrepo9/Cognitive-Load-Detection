@@ -48,8 +48,8 @@ export default function Settings() {
   useAuthFetch(() => {
     Promise.all([
       settingsAPI.get(),
-      settingsAPI.getAutostart().catch(() => ({ data: { enabled: false } })),
-    ]).then(([{ data }, { data: autostartData }]) => {
+      settingsAPI.getAutostart().catch(() => ({ enabled: false })),
+    ]).then(([data, autostartData]) => {
       setTracking(data.tracking_enabled ?? true)
       setInterval_(data.flush_interval_sec ?? 5)
       setNotifications(data.notifications_enabled ?? true)

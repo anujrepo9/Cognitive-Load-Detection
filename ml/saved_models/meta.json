@@ -2,7 +2,7 @@
   "model_type": "rf",
   "calibrated": true,
   "version": "1.0.0",
-  "trained_at": "2026-09-19T07:26:34.883594+00:00",
+  "trained_at": "2026-10-03T14:33:11.401565+00:00",
   "accuracy": 0.99537,
   "cv_mean": 0.991125,
   "cv_std": 0.004336,

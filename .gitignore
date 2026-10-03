@@ -1,5 +1,5 @@
 # ============================================================
-# Python
+# Python (training scripts only — no runtime Python)
 # ============================================================
 __pycache__/
 *.py[cod]
@@ -27,7 +27,6 @@ ENV/
 .env.test.local
 .env.production.local
 
-# Keep example environment files
 !.env.example
 !**/.env.example
 
@@ -35,7 +34,7 @@ SECRET.MD
 
 
 # ============================================================
-# Database
+# Database (SQLite lives in %APPDATA% at runtime, not in repo)
 # ============================================================
 *.db
 *.sqlite
@@ -52,10 +51,8 @@ npm-debug.log*
 
 
 # ============================================================
-# ML / Data
+# ML / Data — source models (joblib) and datasets
 # ============================================================
-
-# Existing model directory
 ml/saved_models/*.joblib
 ml/saved_models/*.pkl
 ml/saved_models/*.h5
@@ -69,30 +66,16 @@ ml/saved_models/*.pth
 ml/datasets/
 ml/dataset.csv
 
-# New sidecar ML models
+# Root-level stray model files
 *.joblib
 *.pkl
 
-# Keep the production model if it is intentionally committed
-!sidecars/ml_inference/model.joblib
-
 
 # ============================================================
-# Collector Runtime Data
+# ONNX assets (built by scripts/convert_model.py — not committed)
 # ============================================================
-backend/collector/output/
-backend/collector/pending_queue.jsonl
-backend/collector/collector_config.json
-
-# Keep example config
-!backend/collector/collector_config.example.json
-
-# New sidecar collector runtime data
-sidecars/collector/output/
-sidecars/collector/*.jsonl
-sidecars/collector/collector_config.json
-
-!sidecars/collector/collector_config.example.json
+src-tauri/assets/model.onnx
+src-tauri/assets/scaler_params.json
 
 
 # ============================================================
@@ -114,27 +97,18 @@ out/
 # ============================================================
 # Tauri / Rust
 # ============================================================
-
-# Rust compilation output
 src-tauri/target/
-
-# Generated Tauri files
 src-tauri/gen/
 
-# Generated sidecar binaries
+# No sidecars in pure-Rust build — directory removed
 src-tauri/sidecars/
 
 
 # ============================================================
 # Build / Packaging
 # ============================================================
-
-# Ignore generated build files
 build/*
 !build/build.bat
-
-# PyInstaller
-*.spec.bak
 
 # Installer output
 installer/Output/
@@ -180,6 +154,12 @@ htmlcov/
 
 
 # ============================================================
-# Legacy / Unused Model
+# Legacy / Removed
 # ============================================================
 models/hand_landmarker.task
+
+# Old Python backend (deleted)
+backend/
+
+# Old sidecar runtime data (deleted)
+sidecars/

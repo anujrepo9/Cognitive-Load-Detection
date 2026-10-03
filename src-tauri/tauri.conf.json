@@ -38,10 +38,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": [
-      "sidecars/cogniload_backend",
-      "sidecars/cogniload_collector"
-    ],
     "windows": {
       "nsis": {
         "installMode": "currentUser"

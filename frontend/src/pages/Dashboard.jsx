@@ -116,8 +116,8 @@ export default function Dashboard() {
       dashboardAPI.overview(),
       modelAPI.info(),
     ]).then(([statsRes, modelRes]) => {
-      if (statsRes.status === "fulfilled") setStats(statsRes.value.data)
-      if (modelRes.status === "fulfilled") setModelInfo(modelRes.value.data)
+      if (statsRes.status === "fulfilled") setStats(statsRes.value)
+      if (modelRes.status === "fulfilled") setModelInfo(modelRes.value)
     }).finally(() => setLoading(false))
   }, [])
 
@@ -128,7 +128,7 @@ export default function Dashboard() {
 
   if (loading) return <SkeletonPage />
 
-  const wsConnected = wsStatus === "connected"
+  const wsConnected = wsStatus === "connected" || wsStatus === "native"
 
   return (
     <div className="p-4 lg:p-6 space-y-6">

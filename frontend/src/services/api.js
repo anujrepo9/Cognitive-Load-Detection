@@ -1,166 +1,241 @@
-import axios from "axios"
+/**
+ * api.js — Tauri invoke adapter
+ *
+ * All calls that previously went to FastAPI over HTTP now go directly
+ * to Rust Tauri commands via invoke().  The public surface (authAPI,
+ * sessionAPI, behaviorAPI, predictAPI) is intentionally the same shape
+ * so callers in pages/hooks need minimal changes.
+ *
+ * Token management: access token is stored in localStorage under "token";
+ * refresh token under "refreshToken".  Refresh is triggered automatically
+ * when an invoke returns the string "Invalid token" / "Token expired".
+ */
 
-// In production, VITE_API_URL is set to the real backend URL (e.g. https://api.yourapp.com).
-// In development it should be blank — traffic goes through the Vite proxy.
-// Guard: if someone mistakenly sets VITE_API_URL to a localhost address in dev,
-// treat it the same as unset so the proxy is used and CORS is avoided.
-const _rawApiUrl = import.meta.env.VITE_API_URL
-const _isLocalhost = _rawApiUrl && /localhost|127\.0\.0\.1/.test(_rawApiUrl)
-const BASE = (!_rawApiUrl || _isLocalhost) ? "/api" : _rawApiUrl
+import { invoke } from "@tauri-apps/api/core"
 
-const api = axios.create({ baseURL: BASE, timeout: 10000 })
+// ── Token helpers ──────────────────────────────────────────────────────────────
 
-// ── Request: attach access token ──────────────────────────────────────────────
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token")
-  if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
-})
+export function getToken()        { return localStorage.getItem("token")        ?? "" }
+export function getRefreshToken() { return localStorage.getItem("refreshToken") ?? "" }
 
-// ── Response: auto-refresh on 401 / 403, retry once ──────────────────────────
-let _refreshing = false
-let _waitQueue  = []
+function storeTokens(access, refresh) {
+  localStorage.setItem("token",        access)
+  localStorage.setItem("refreshToken", refresh)
+}
 
-function _processQueue(error, token = null) {
-  _waitQueue.forEach(({ resolve, reject }) => error ? reject(error) : resolve(token))
+function clearTokens() {
+  localStorage.removeItem("token")
+  localStorage.removeItem("refreshToken")
+  localStorage.removeItem("user")
+}
+
+// ── Auto-refresh wrapper ───────────────────────────────────────────────────────
+
+let _refreshing   = false
+let _waitQueue    = []
+
+function _processQueue(err, token = null) {
+  _waitQueue.forEach(({ resolve, reject }) => err ? reject(err) : resolve(token))
   _waitQueue = []
 }
 
-function _isAuthError(status) {
-  return status === 401 || status === 403
+const TOKEN_ERRORS = ["Invalid token", "Token expired", "Not an access token"]
+function isAuthError(msg = "") {
+  return TOKEN_ERRORS.some((e) => msg.includes(e))
 }
 
-function _isAuthRoute(url = "") {
-  return url.includes("/auth/refresh") || url.includes("/auth/logout")
-}
+/**
+ * Like invoke() but auto-refreshes the access token on auth errors.
+ * Returns the command result directly (no .data wrapper).
+ */
+export async function call(command, args = {}) {
+  try {
+    return await invoke(command, args)
+  } catch (err) {
+    const msg = typeof err === "string" ? err : (err?.message ?? "")
 
-api.interceptors.response.use(
-  (res) => res,
-  async (err) => {
-    const original = err.config
-    const status   = err.response?.status
+    if (!isAuthError(msg)) throw err
 
-    // Pass through immediately for non-auth errors, already-retried, or auth endpoints
-    if (!_isAuthError(status) || original._retried || _isAuthRoute(original.url)) {
-      // Do NOT call _clearSession here — let AuthContext decide what to do.
-      // A failed /auth/refresh just means tokens are dead; callers handle it.
-      return Promise.reject(err)
-    }
+    // Don't try to refresh auth commands themselves
+    if (command.startsWith("refresh_token") || command === "logout") throw err
 
-    const refreshToken = localStorage.getItem("refreshToken")
-    if (!refreshToken) {
-      // No refresh token — reject without redirecting; AuthContext will handle it
-      return Promise.reject(err)
-    }
-
-    original._retried = true
+    const refreshToken = getRefreshToken()
+    if (!refreshToken) { clearTokens(); throw err }
 
     if (_refreshing) {
       return new Promise((resolve, reject) => {
         _waitQueue.push({ resolve, reject })
-      }).then((newToken) => {
-        original.headers.Authorization = `Bearer ${newToken}`
-        return api(original)
-      })
+      }).then((newToken) => invoke(command, { ...args, token: newToken }))
     }
 
     _refreshing = true
     try {
-      const { data } = await axios.post(`${BASE}/auth/refresh`, {
-        refresh_token: refreshToken,
-      })
-      const newAccess  = data.access_token
-      const newRefresh = data.refresh_token ?? refreshToken
-
-      localStorage.setItem("token",        newAccess)
-      localStorage.setItem("refreshToken", newRefresh)
-      api.defaults.headers.common.Authorization = `Bearer ${newAccess}`
-
+      const result = await invoke("refresh_token", { refresh_token: refreshToken })
+      const newAccess  = result.access_token
+      const newRefresh = result.refresh_token ?? refreshToken
+      storeTokens(newAccess, newRefresh)
       _processQueue(null, newAccess)
-      original.headers = original.headers ?? {}
-      original.headers.Authorization = `Bearer ${newAccess}`
-      return api(original)
+      return invoke(command, { ...args, token: newAccess })
     } catch (refreshErr) {
       _processQueue(refreshErr)
-      // Remove tokens so AuthContext knows the session is dead,
-      // but do NOT hard-redirect here — AuthContext controls navigation.
-      localStorage.removeItem("token")
-      localStorage.removeItem("refreshToken")
-      localStorage.removeItem("user")
-      return Promise.reject(refreshErr)
+      clearTokens()
+      throw refreshErr
     } finally {
       _refreshing = false
     }
-  },
-)
+  }
+}
 
-// ── Proactive token bootstrap ──────────────────────────────────────────────────
-;(function _bootstrapToken() {
-  const token = localStorage.getItem("token")
-  if (token) api.defaults.headers.common.Authorization = `Bearer ${token}`
-})()
+// ── Error helper (same API as before) ─────────────────────────────────────────
 
-// ── Centralised error helper ──────────────────────────────────────────────────
 export function getErrorMessage(err, fallback = "Something went wrong. Please try again.") {
   if (!err) return fallback
-  const detail = err.response?.data?.error?.message
-    || err.response?.data?.detail
-    || err.message
-  return detail || fallback
+  return typeof err === "string" ? err : (err?.message ?? fallback)
 }
 
-// ── API surfaces ──────────────────────────────────────────────────────────────
+// ── Auth ───────────────────────────────────────────────────────────────────────
 
 export const authAPI = {
-  login:          (data) => api.post("/auth/login",           data),
-  register:       (data) => api.post("/auth/register",        data),
-  profile:        ()     => api.get("/auth/profile"),
-  refresh:        (data) => api.post("/auth/refresh",         data),
-  logout:         (data) => api.post("/auth/logout",          data),
-  updateProfile:  (data) => api.patch("/auth/profile",        data),
-  changePassword: (data) => api.post("/auth/change-password", data),
+  register: ({ name, email, password }) =>
+    invoke("register", { name, email, password }),
+
+  login: ({ email, password }) =>
+    invoke("login", { email, password }),
+
+  logout: () =>
+    invoke("logout", { refresh_token: getRefreshToken() }).finally(clearTokens),
+
+  profile: () =>
+    call("get_current_user", { token: getToken() }),
+
+  refresh: () =>
+    invoke("refresh_token", { refresh_token: getRefreshToken() }),
+
+  // updateProfile is not yet a Tauri command; add when needed
+  updateProfile: () => Promise.reject("not implemented"),
 }
 
-export const behaviorAPI = {
-  send:    (payload) => api.post("/behavior", payload),
-  predict: (payload) => api.post("/predict",  payload),
-}
+// ── Sessions ───────────────────────────────────────────────────────────────────
 
 export const sessionAPI = {
-  start:   ()     => api.post("/session/start"),
-  current: ()     => api.get("/session/current"),
-  pause:   ()     => api.post("/session/pause"),
-  resume:  ()     => api.post("/session/resume"),
-  end:     ()     => api.post("/session/end"),
+  start: () =>
+    call("start_session", { token: getToken() }),
+
+  end: (sessionId) =>
+    call("end_session", { token: getToken(), session_id: sessionId }),
+
+  list: () =>
+    call("get_sessions", { token: getToken() }),
+
+  get: (sessionId) =>
+    call("get_session", { token: getToken(), session_id: sessionId }),
 }
 
-export const dashboardAPI = {
-  overview:       ()               => api.get("/dashboard"),
-  history:        (params = {})   => api.get("/history",        { params }),
-  recommendation: ()               => api.get("/recommendation"),
+// ── Behavior ───────────────────────────────────────────────────────────────────
+
+export const behaviorAPI = {
+  /**
+   * Drain the native collector and write a behavior row.
+   * sessionId is required; the payload is computed in Rust.
+   */
+  flush: (sessionId) =>
+    call("flush_behavior", { token: getToken(), session_id: sessionId }),
+
+  history: (sessionId, limit = 50) =>
+    call("get_behavior_history", { token: getToken(), session_id: sessionId, limit }),
 }
 
-export const reportsAPI = {
-  daily:  (days = 7)   => api.get("/reports/daily",  { params: { days } }),
-  weekly: (weeks = 4)  => api.get("/reports/weekly", { params: { weeks } }),
-  export: ()           => api.get("/reports/export",  { responseType: "blob" }),
+// ── Predictions ────────────────────────────────────────────────────────────────
+
+export const predictAPI = {
+  /**
+   * Run ONNX inference on a BehaviorPayload object.
+   * payload shape must match BehaviorPayload in behavior.rs.
+   */
+  predict: (sessionId, payload, behaviorId = null) =>
+    call("predict_load", {
+      token:       getToken(),
+      session_id:  sessionId,
+      behavior_id: behaviorId,
+      payload,
+    }),
+
+  list: (sessionId, limit = 50) =>
+    call("get_predictions", { token: getToken(), session_id: sessionId, limit }),
 }
 
-export const analyticsAPI = {
-  trends:   (hours = 24, limit = 200) => api.get("/analytics/trends",   { params: { hours, limit } }),
-  features: ()                        => api.get("/analytics/features"),
+// ── Collector control ──────────────────────────────────────────────────────────
+
+export const collectorAPI = {
+  setEnabled: (enabled) =>
+    invoke("set_tracking_enabled", { enabled }),
+
+  status: () =>
+    invoke("get_tracking_status"),
 }
+
+// ── Settings ───────────────────────────────────────────────────────────────────
 
 export const settingsAPI = {
-  get:              ()     => api.get("/settings"),
-  update:           (data) => api.put("/settings", data),
-  getAutostart:     ()     => api.get("/settings/autostart"),
-  enableAutostart:  ()     => api.post("/settings/autostart"),
-  disableAutostart: ()     => api.delete("/settings/autostart"),
+  get: () =>
+    call("get_settings", { token: getToken() }),
+
+  update: (payload) =>
+    call("update_settings", { token: getToken(), ...payload }),
+
+  getAutostart: () =>
+    invoke("get_autostart"),
+
+  enableAutostart: () =>
+    invoke("set_autostart", { enabled: true }),
+
+  disableAutostart: () =>
+    invoke("set_autostart", { enabled: false }),
+}
+
+// ── Profile & password ─────────────────────────────────────────────────────────
+
+// Extend authAPI with profile-mutation methods
+authAPI.updateProfile = ({ name, email }) =>
+  call("update_profile", { token: getToken(), name, email })
+
+authAPI.changePassword = ({ current_password, new_password }) =>
+  call("change_password", { token: getToken(), current_password, new_password })
+
+// ── Dashboard / model / recommendations / history / CSV ───────────────────────
+
+export const dashboardAPI = {
+  overview: () =>
+    call("get_overview", { token: getToken() }),
+
+  history: ({ page, per_page, from_date, to_date } = {}) =>
+    call("get_history", { token: getToken(), page, per_page, from_date, to_date }),
+
+  recommendation: () =>
+    call("get_recommendation", { token: getToken() }),
 }
 
 export const modelAPI = {
-  info: () => api.get("/model/info"),
+  info: () =>
+    invoke("get_model_info"),
 }
 
-export default api
+export const reportsAPI = {
+  // Returns raw CSV string; caller builds the Blob
+  export: () =>
+    call("export_csv", { token: getToken() }),
+}
+
+// ── Analytics ──────────────────────────────────────────────────────────────────
+
+export const analyticsAPI = {
+  trends: (hours = 24, limit = 500) =>
+    call("get_analytics_trends", { token: getToken(), hours, limit }),
+
+  features: () =>
+    call("get_analytics_features", { token: getToken() }),
+}
+
+// Extend reportsAPI with daily / weekly (was only export before)
+reportsAPI.daily  = (days = 14)  => call("get_daily_reports",  { token: getToken(), days })
+reportsAPI.weekly = (weeks = 8)  => call("get_weekly_reports", { token: getToken(), weeks })

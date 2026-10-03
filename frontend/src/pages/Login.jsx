@@ -21,8 +21,9 @@ export default function Login() {
     setLoading(true)
     setError(null)
     try {
-      const { data } = await authAPI.login({ email, password })
-      login(data.user, data.access_token, data.refresh_token)
+      // invoke() returns the value directly — no .data wrapper
+      const result = await authAPI.login({ email, password })
+      login(result.user, result.access_token, result.refresh_token)
       navigate("/dashboard")
     } catch (err) {
       setError(getErrorMessage(err, "Invalid credentials. Please try again."))
@@ -63,7 +64,6 @@ export default function Login() {
           )}
 
           <form onSubmit={handleSubmit} noValidate className="space-y-4">
-            {/* Email */}
             <div>
               <label htmlFor="email"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
@@ -81,7 +81,6 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Password */}
             <div>
               <label htmlFor="password"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">

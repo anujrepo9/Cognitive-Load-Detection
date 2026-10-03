@@ -102,7 +102,7 @@ export default function Reports() {
   useAuthFetch(() => {
     setLoading(true)
     Promise.all([reportsAPI.daily(14), reportsAPI.weekly(8)])
-      .then(([d, w]) => { setDaily(d.data.days); setWeekly(w.data.weeks) })
+      .then(([d, w]) => { setDaily(d.days); setWeekly(w.weeks) })
       .catch((err) => setError(getErrorMessage(err, "Could not load reports.")))
       .finally(() => setLoading(false))
   }, [])
@@ -111,7 +111,7 @@ export default function Reports() {
     setExporting(true); setExportErr(null)
     try {
       const res = await reportsAPI.export()
-      const url = URL.createObjectURL(new Blob([res.data]))
+      const url = URL.createObjectURL(new Blob([res]))
       const a   = document.createElement("a")
       a.href     = url
       a.download = `cogniload_export_${new Date().toISOString().slice(0, 10)}.csv`

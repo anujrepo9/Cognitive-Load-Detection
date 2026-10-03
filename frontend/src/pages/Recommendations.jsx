@@ -29,7 +29,7 @@ export default function Recommendations() {
 
   useAuthFetch(() => {
     dashboardAPI.recommendation()
-      .then(({ data }) => setRecs(data.recommendations || []))
+      .then((data) => setRecs(data.recommendations || []))
       .catch((err) => setError(getErrorMessage(err, "Could not load recommendations.")))
       .finally(() => setLoading(false))
   }, [])

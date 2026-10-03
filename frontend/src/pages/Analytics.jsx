@@ -54,12 +54,12 @@ export default function Analytics() {
     Promise.allSettled([analyticsAPI.trends(h, 500), analyticsAPI.features()])
       .then(([tRes, fRes]) => {
         if (tRes.status === "fulfilled") {
-          setTrends(tRes.value.data)
+          setTrends(tRes.value)
         } else {
           setError(getErrorMessage(tRes.reason, "Could not load analytics trends."))
         }
         if (fRes.status === "fulfilled") {
-          setFeatures(fRes.value.data)
+          setFeatures(fRes.value)
         }
         // features endpoint failing is non-fatal — charts still render without it
       })

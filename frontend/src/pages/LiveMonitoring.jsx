@@ -23,6 +23,7 @@ function formatDuration(seconds) {
 }
 
 const STATUS_UI = {
+  native:       { icon: Wifi,      color: "text-success", label: "Native",         bg: "bg-success/10" },
   connected:    { icon: Wifi,      color: "text-success", label: "Live",          bg: "bg-success/10" },
   connecting:   { icon: Wifi,      color: "text-warning", label: "Connecting…",   bg: "bg-warning/10" },
   reconnecting: { icon: RotateCcw, color: "text-warning", label: "Reconnecting",  bg: "bg-warning/10" },
@@ -36,7 +37,7 @@ const tooltipStyle = {
 
 export default function LiveMonitoring() {
   const { websocketStatus: status, prediction, session, trackingState, quality } = useTracking()
-  const connected = status === "connected"
+  const connected = status === "connected" || status === "native"
 
   const [history,     setHistory]     = useState([])
   const [wpmHistory,  setWpmHistory]  = useState([])

@@ -26,7 +26,7 @@ export default function Profile() {
     if (!name.trim()) { setError("Name cannot be empty."); return }
     setSaving(true); setError(null)
     try {
-      const { data } = await authAPI.updateProfile({ name: name.trim(), email: email.trim() })
+      const data = await authAPI.updateProfile({ name: name.trim(), email: email.trim() })
       // Update AuthContext so Sidebar/TopNav reflect the new name immediately
       const token        = localStorage.getItem("token")
       const refreshToken = localStorage.getItem("refreshToken")
