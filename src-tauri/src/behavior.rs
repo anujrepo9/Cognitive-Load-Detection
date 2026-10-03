@@ -18,8 +18,8 @@ use crate::db::{open, DbPath};
 /// The 17-feature payload — mirrors the DB columns and the ML feature order.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BehaviorPayload {
-    // Keyboard
-    pub typing_wpm:          f64,
+    // Keyboard — None means "no keystrokes in this window" → stored as SQL NULL
+    pub typing_wpm:          Option<f64>,
     pub chars_per_min:       f64,
     pub avg_hold_ms:         f64,
     pub avg_flight_ms:       f64,
@@ -79,7 +79,8 @@ pub async fn flush_behavior(
          )",
         params![
             session_id,
-            payload.typing_wpm,    payload.chars_per_min, payload.avg_hold_ms,
+            payload.typing_wpm,    // Option<f64>: None → SQL NULL, Some(v) → integer
+            payload.chars_per_min, payload.avg_hold_ms,
             payload.avg_flight_ms, payload.error_rate,    payload.pause_count,
             payload.avg_pause_ms,  payload.typing_variance,
             payload.avg_cursor_speed, payload.movement_distance, payload.click_rate,

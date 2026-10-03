@@ -160,7 +160,7 @@ def get_recommendations(
 def _priority(rec_type: str, p: BehaviorPayload) -> float:
     """Score a recommendation type by how relevant the current signals are."""
     if rec_type == "break"    and p.idle_time_pct > 0.3:    return 3.0
-    if rec_type == "break"    and p.typing_wpm < 25:        return 2.5
+    if rec_type == "break"    and p.typing_wpm is not None and p.typing_wpm < 25:  return 2.5
     if rec_type == "notify"   and p.pause_count > 6:        return 2.0
     if rec_type == "simplify" and p.error_rate > 0.10:      return 1.8
     if rec_type == "water":                                 return 1.0

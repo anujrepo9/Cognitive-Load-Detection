@@ -95,12 +95,11 @@ fn run_inference(
     app:     &tauri::AppHandle,
     payload: &BehaviorPayload,
 ) -> Result<(String, f32, [f32; 3]), String> {
-    let sc   = scaler(app)?;
-    let _sess = ort_session(app)?;
+    let sc = scaler(app)?;
 
     // Build feature vector in FEATURE_ORDER
     let raw: [f64; 17] = [
-        payload.typing_wpm,       payload.chars_per_min,    payload.avg_hold_ms,
+        payload.typing_wpm.unwrap_or(0.0), payload.chars_per_min, payload.avg_hold_ms,
         payload.avg_flight_ms,    payload.error_rate,       payload.pause_count,
         payload.avg_pause_ms,     payload.typing_variance,  payload.avg_cursor_speed,
         payload.movement_distance,payload.click_rate,       payload.double_click_rate,

@@ -541,62 +541,16 @@ pub async fn get_history(
 
     let conn = open(&state.0).map_err(|e| e.to_string())?;
 
-    // Build optional date filters
-    let from_clause = from_date
-        .as_deref()
-        .map(|_| " AND date(s.start_time) >= ?3")
-        .unwrap_or("");
-    let to_clause = to_date
-        .as_deref()
-        .map(|_| " AND date(s.start_time) <= ?4")
-        .unwrap_or("");
-
-    let count_sql = format!(
-        "SELECT COUNT(*) FROM sessions s WHERE s.user_id = ?1{from_clause}{to_clause}"
-    );
-    let data_sql = format!(
-        "SELECT s.id, s.start_time, s.end_time,
-                COUNT(p.id) as prediction_count,
-                (SELECT p2.load_level FROM predictions p2
-                 WHERE p2.session_id = s.id
-                 GROUP BY p2.load_level ORDER BY COUNT(*) DESC LIMIT 1) as avg_load
-         FROM sessions s
-         LEFT JOIN predictions p ON p.session_id = s.id
-         WHERE s.user_id = ?1{from_clause}{to_clause}
-         GROUP BY s.id
-         ORDER BY s.start_time DESC
-         LIMIT ?2 OFFSET {offset}"
-    );
-
-
-
-    // Count
-    let total: i64 = match (&from_date, &to_date) {
-        (Some(f), Some(t)) => conn
-            .query_row(&count_sql, params![user_id, f, t], |r| r.get(0))
-            .unwrap_or(0),
-        (Some(f), None) => conn
-            .query_row(&count_sql, params![user_id, f], |r| r.get(0))
-            .unwrap_or(0),
-        (None, Some(t)) => conn
-            .query_row(&count_sql, params![user_id, t], |r| r.get(0))
-            .unwrap_or(0),
-        (None, None) => conn
-            .query_row(&count_sql, params![user_id], |r| r.get(0))
-            .unwrap_or(0),
-    };
-
-    let total_pages = ((total as f64) / (per_page as f64)).ceil() as i64;
-
-    // Data — row mapper closure
-    let map_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<SessionRow> {
+    // Generate per-arm SQL so param numbers are always sequential (?1, ?2, ...)
+    // and never skip. The old code used fixed ?3/?4 even when only one date was
+    // supplied, which made rusqlite bind the wrong (or missing) param.
+    let row_mapper = |row: &rusqlite::Row<'_>| -> rusqlite::Result<SessionRow> {
         let id: i64              = row.get(0)?;
         let start: String        = row.get(1)?;
         let end: Option<String>  = row.get(2)?;
         let pcount: i64          = row.get(3)?;
         let avg: Option<String>  = row.get(4)?;
 
-        // Human-readable duration
         let duration = end.as_deref().and_then(|e| {
             let s = chrono::DateTime::parse_from_rfc3339(&format!("{}Z", start.replace(' ', "T"))).ok()?;
             let e = chrono::DateTime::parse_from_rfc3339(&format!("{}Z", e.replace(' ', "T"))).ok()?;
@@ -607,65 +561,80 @@ pub async fn get_history(
             Some(if h > 0 { format!("{h}h {m}m") } else { format!("{m}m {s:02}s") })
         });
 
-        Ok(SessionRow {
-            session_id: id,
-            start_time: start,
-            end_time: end,
-            duration,
-            avg_load: avg,
-            prediction_count: pcount,
-        })
+        Ok(SessionRow { session_id: id, start_time: start, end_time: end, duration, avg_load: avg, prediction_count: pcount })
     };
 
-    let sessions: Vec<SessionRow> = match (&from_date, &to_date) {
+    let subquery = "(SELECT p2.load_level FROM predictions p2
+                     WHERE p2.session_id = s.id
+                     GROUP BY p2.load_level ORDER BY COUNT(*) DESC LIMIT 1) as avg_load";
+
+    let (total, sessions): (i64, Vec<SessionRow>) = match (&from_date, &to_date) {
         (Some(f), Some(t)) => {
-            let mut s = conn.prepare(&data_sql).map_err(|e| e.to_string())?;
-
-            let rows = s
-                .query_map(params![user_id, per_page, f, t], map_row)
-                .map_err(|e| e.to_string())?;
-
-            rows
-                .filter_map(|r| r.ok())
-                .collect()
+            let total = conn.query_row(
+                "SELECT COUNT(*) FROM sessions s WHERE s.user_id = ?1
+                  AND date(s.start_time) >= ?2 AND date(s.start_time) <= ?3",
+                params![user_id, f, t], |r| r.get(0)).unwrap_or(0);
+            let sql = format!(
+                "SELECT s.id, s.start_time, s.end_time, COUNT(p.id), {subquery}
+                 FROM sessions s LEFT JOIN predictions p ON p.session_id = s.id
+                 WHERE s.user_id = ?1 AND date(s.start_time) >= ?2 AND date(s.start_time) <= ?3
+                 GROUP BY s.id ORDER BY s.start_time DESC LIMIT ?4 OFFSET {offset}");
+            let mut st = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let rows = st.query_map(params![user_id, f, t, per_page], row_mapper)
+                .map_err(|e| e.to_string())?
+                .filter_map(|r| r.ok()).collect();
+            (total, rows)
         }
-
         (Some(f), None) => {
-            let mut s = conn.prepare(&data_sql).map_err(|e| e.to_string())?;
-
-            let rows = s
-                .query_map(params![user_id, per_page, f], map_row)
-                .map_err(|e| e.to_string())?;
-
-            rows
-                .filter_map(|r| r.ok())
-                .collect()
+            let total = conn.query_row(
+                "SELECT COUNT(*) FROM sessions s WHERE s.user_id = ?1
+                  AND date(s.start_time) >= ?2",
+                params![user_id, f], |r| r.get(0)).unwrap_or(0);
+            let sql = format!(
+                "SELECT s.id, s.start_time, s.end_time, COUNT(p.id), {subquery}
+                 FROM sessions s LEFT JOIN predictions p ON p.session_id = s.id
+                 WHERE s.user_id = ?1 AND date(s.start_time) >= ?2
+                 GROUP BY s.id ORDER BY s.start_time DESC LIMIT ?3 OFFSET {offset}");
+            let mut st = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let rows = st.query_map(params![user_id, f, per_page], row_mapper)
+                .map_err(|e| e.to_string())?
+                .filter_map(|r| r.ok()).collect();
+            (total, rows)
         }
-
         (None, Some(t)) => {
-            let mut s = conn.prepare(&data_sql).map_err(|e| e.to_string())?;
-
-            let rows = s
-                .query_map(params![user_id, per_page, t], map_row)
-                .map_err(|e| e.to_string())?;
-
-            rows
-                .filter_map(|r| r.ok())
-                .collect()
+            let total = conn.query_row(
+                "SELECT COUNT(*) FROM sessions s WHERE s.user_id = ?1
+                  AND date(s.start_time) <= ?2",
+                params![user_id, t], |r| r.get(0)).unwrap_or(0);
+            let sql = format!(
+                "SELECT s.id, s.start_time, s.end_time, COUNT(p.id), {subquery}
+                 FROM sessions s LEFT JOIN predictions p ON p.session_id = s.id
+                 WHERE s.user_id = ?1 AND date(s.start_time) <= ?2
+                 GROUP BY s.id ORDER BY s.start_time DESC LIMIT ?3 OFFSET {offset}");
+            let mut st = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let rows = st.query_map(params![user_id, t, per_page], row_mapper)
+                .map_err(|e| e.to_string())?
+                .filter_map(|r| r.ok()).collect();
+            (total, rows)
         }
-
         (None, None) => {
-            let mut s = conn.prepare(&data_sql).map_err(|e| e.to_string())?;
-
-            let rows = s
-                .query_map(params![user_id, per_page], map_row)
-                .map_err(|e| e.to_string())?;
-
-            rows
-                .filter_map(|r| r.ok())
-                .collect()
+            let total = conn.query_row(
+                "SELECT COUNT(*) FROM sessions s WHERE s.user_id = ?1",
+                params![user_id], |r| r.get(0)).unwrap_or(0);
+            let sql = format!(
+                "SELECT s.id, s.start_time, s.end_time, COUNT(p.id), {subquery}
+                 FROM sessions s LEFT JOIN predictions p ON p.session_id = s.id
+                 WHERE s.user_id = ?1
+                 GROUP BY s.id ORDER BY s.start_time DESC LIMIT ?2 OFFSET {offset}");
+            let mut st = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let rows = st.query_map(params![user_id, per_page], row_mapper)
+                .map_err(|e| e.to_string())?
+                .filter_map(|r| r.ok()).collect();
+            (total, rows)
         }
     };
+
+    let total_pages = ((total as f64) / (per_page as f64)).ceil() as i64;
 
     Ok(HistoryResponse { sessions, total, total_pages })
 }

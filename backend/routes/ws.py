@@ -14,7 +14,6 @@ from collections import defaultdict
 from typing import DefaultDict, Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
-from jose import JWTError
 
 from config import SECRET_KEY, ALGORITHM
 from core.logging import get_logger
@@ -22,9 +21,10 @@ from database.db import get_db
 from database.models import User
 
 try:
-    from jose import jwt as _jwt
+    from jose import jwt as _jwt, JWTError
 except ImportError:
-    _jwt = None  # graceful – WS auth will reject all connections
+    _jwt = None       # graceful – WS auth will reject all connections
+    JWTError = Exception  # fallback so the except clause in _decode_ws_token still works
 
 logger = get_logger(__name__)
 

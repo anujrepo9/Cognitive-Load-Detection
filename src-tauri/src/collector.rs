@@ -92,7 +92,13 @@ impl CollectorState {
         let elapsed_min = elapsed_secs / 60.0;
 
         // ── Keyboard ──────────────────────────────────────────────────────────
-        let typing_wpm      = (m.chars_typed as f64 / 5.0) / elapsed_min;
+        // typing_wpm is None when no characters were typed this window — the DB
+        // column and the ML model both expect NULL rather than 0 for "no data".
+        let typing_wpm = if m.chars_typed > 0 {
+            Some((m.chars_typed as f64 / 5.0) / elapsed_min)
+        } else {
+            None
+        };
         let chars_per_min   = m.chars_typed as f64 / elapsed_min;
         let avg_hold_ms     = if m.hold_count   > 0 { m.hold_ms_sum   / m.hold_count   as f64 } else { 0.0 };
         let avg_flight_ms   = if m.flight_count > 0 { m.flight_ms_sum / m.flight_count as f64 } else { 0.0 };
@@ -149,6 +155,10 @@ impl CollectorState {
 }
 
 // ── Entry point (run in dedicated OS thread, NOT tokio) ───────────────────────
+
+// Module-level static for double-click detection — must live outside the closure
+// because a static defined inside a non-Sync closure is unsound.
+static LAST_CLICK: Mutex<Option<Instant>> = Mutex::new(None);
 
 pub fn run(app: AppHandle) {
     let tracking = Arc::new(AtomicBool::new(true));
@@ -218,13 +228,18 @@ pub fn run(app: AppHandle) {
             // ── Mouse move ────────────────────────────────────────────────
             EventType::MouseMove { x, y } => {
                 let (fx, fy) = (x as f64, y as f64);
-                if let Some((px, py)) = m.last_mouse_pos {
+
+                // Snapshot old position and time BEFORE overwriting them
+                let prev_pos  = m.last_mouse_pos;
+                let prev_time = m.last_mouse_time;
+
+                if let Some((px, py)) = prev_pos {
                     let dx   = fx - px;
                     let dy   = fy - py;
                     let dist = (dx * dx + dy * dy).sqrt();
                     m.distance_px += dist;
 
-                    if let Some(last_t) = m.last_mouse_time {
+                    if let Some(last_t) = prev_time {
                         let dt_s = last_t.elapsed().as_secs_f64().max(0.001);
                         let speed = dist / dt_s;
                         m.speed_sum    += speed;
@@ -238,28 +253,23 @@ pub fn run(app: AppHandle) {
                             m.accel_count += 1;
                         }
 
-                        // Smoothness: 1 / (1 + direction_change_angle)
-                        // Approximate via dot product of consecutive move vectors
+                        // Smoothness approximation via inverse distance change
                         m.smoothness_sum   += 1.0 / (1.0 + dist.max(0.01));
                         m.smoothness_count += 1;
-                    }
-                }
-                m.last_mouse_pos  = Some((fx, fy));
-                m.last_mouse_time = Some(now);
 
-                // Hover: if distance < 5 px, count as hover dwell
-                if let Some((px, py)) = m.last_mouse_pos {
-                    let d = ((fx - px).powi(2) + (fy - py).powi(2)).sqrt();
-                    if d < 5.0 {
-                        if let Some(last_t) = m.last_mouse_time {
-                            let dwell = last_t.elapsed().as_secs_f64() * 1000.0;
-                            if dwell > 200.0 {
-                                m.hover_ms_sum  += dwell;
-                                m.hover_count   += 1;
+                        // Hover: cursor barely moved — measure dwell from last event
+                        if dist < 5.0 {
+                            let dwell_ms = dt_s * 1000.0;
+                            if dwell_ms > 200.0 {
+                                m.hover_ms_sum += dwell_ms;
+                                m.hover_count  += 1;
                             }
                         }
                     }
                 }
+
+                m.last_mouse_pos  = Some((fx, fy));
+                m.last_mouse_time = Some(now);
             }
 
             // ── Mouse buttons ─────────────────────────────────────────────
@@ -267,7 +277,6 @@ pub fn run(app: AppHandle) {
                 m.clicks += 1;
                 // Naive double-click: two clicks within 400 ms
                 // (rdev doesn't expose double-click natively)
-                static LAST_CLICK: Mutex<Option<Instant>> = Mutex::new(None);
                 let mut lc = LAST_CLICK.lock().unwrap();
                 if let Some(prev) = *lc {
                     if prev.elapsed() < Duration::from_millis(400) {
