@@ -14,16 +14,72 @@ use tauri::Manager;
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
-            // ── Resolve DB path inside app data dir ──────────────────────────
+            // ── Resolve app data dir ──────────────────────────────────────────
             let data_dir = app
                 .path()
                 .app_data_dir()
                 .expect("failed to get app data dir");
             std::fs::create_dir_all(&data_dir).expect("cannot create data dir");
-            let db_path = data_dir.join("cogniload.db");
-            let db_path_str = db_path.to_string_lossy().to_string();
 
-            // ── Init schema ──────────────────────────────────────────────────
+            // ── Copy ML assets → app data dir ────────────────────────────────
+            //
+            // Search order for each asset:
+            //   1. <exe_dir>/resources/<asset>   ← dev: put files here manually
+            //   2. <exe_dir>/<asset>             ← portable layout
+            //   3. <bundle resource_dir>/<asset> ← packaged .exe (tauri.release.conf.json)
+            //
+            // resource_dir() is the correct Tauri 2 API (resolve_resource does
+            // not exist on PathResolver in this version).
+            //
+            // Only copies when destination doesn't exist so a manually placed
+            // model upgrade is never overwritten on relaunch.
+            let exe_dir = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+
+            let resource_dir = app.path().resource_dir().ok();
+
+            for asset in &["model.onnx", "scaler_params.json", "onnxruntime.dll"] {
+                let dst = data_dir.join(asset);
+                if dst.exists() {
+                    continue;
+                }
+
+                let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+
+                // 1. <exe_dir>/resources/<asset>  (dev layout)
+                if let Some(ref dir) = exe_dir {
+                    candidates.push(dir.join("resources").join(asset));
+                    // 2. <exe_dir>/<asset>  (portable)
+                    candidates.push(dir.join(asset));
+                }
+                // 3. Tauri bundle resource dir (packaged .exe)
+                if let Some(ref rdir) = resource_dir {
+                    candidates.push(rdir.join("resources").join(asset));
+                    candidates.push(rdir.join(asset));
+                }
+
+                match candidates.into_iter().find(|p| p.exists()) {
+                    Some(src) => {
+                        std::fs::copy(&src, &dst)
+                            .unwrap_or_else(|e| panic!("failed to copy {asset}: {e}"));
+                        println!("[setup] copied {asset} → {}", dst.display());
+                    }
+                    None => {
+                        // Not fatal — predict.rs returns a clear error to the
+                        // frontend on first prediction attempt.
+                        // For dev: place files at src-tauri/resources/<asset>
+                        eprintln!(
+                            "[setup] WARNING: {asset} not found. \
+                             For dev, place it at: src-tauri/resources/{asset}"
+                        );
+                    }
+                }
+            }
+
+            // ── Init DB schema ───────────────────────────────────────────────
+            let db_path     = data_dir.join("cogniload.db");
+            let db_path_str = db_path.to_string_lossy().to_string();
             db::init_db(&db_path_str).expect("DB init failed");
             app.manage(DbPath(db_path_str));
 

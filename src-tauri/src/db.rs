@@ -2,6 +2,11 @@
 //
 // Mirrors the existing PostgreSQL models exactly:
 //   users, refresh_tokens, sessions, behavior_data, predictions, user_settings
+//
+// FIX (Bug 3): chars_per_min and pause_count are now REAL (were INTEGER).
+//   They are computed as f64 in collector.rs / BehaviorPayload and must be
+//   stored as REAL to avoid silent decimal truncation that corrupted ML features.
+//   A migration block runs at startup to ALTER existing databases in-place.
 
 use rusqlite::{Connection, Result, params};
 
@@ -11,12 +16,12 @@ pub struct DbPath(pub String);
 /// Open a connection to the SQLite database at `path`.
 pub fn open(path: &str) -> Result<Connection> {
     let conn = Connection::open(path)?;
-    // Enable WAL mode for better concurrent read performance
+    // WAL mode: better concurrent-read performance; foreign keys enforced.
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
     Ok(conn)
 }
 
-/// Create all tables if they don't exist yet.
+/// Create all tables if they don't exist yet, then run any pending migrations.
 /// Called once at app startup from main.rs setup().
 pub fn init_db(path: &str) -> Result<()> {
     let conn = open(path)?;
@@ -52,6 +57,10 @@ pub fn init_db(path: &str) -> Result<()> {
         );
 
         -- ── Behavior data ────────────────────────────────────────────────────
+        -- IMPORTANT: chars_per_min and pause_count are REAL, not INTEGER.
+        -- The Rust BehaviorPayload stores both as f64 (computed over a time
+        -- window), so INTEGER would silently truncate the fractional part and
+        -- feed wrong values to the ML model.
         CREATE TABLE IF NOT EXISTS behavior_data (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id          INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -59,12 +68,12 @@ pub fn init_db(path: &str) -> Result<()> {
             created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
 
             -- Keyboard features
-            typing_wpm          INTEGER,
-            chars_per_min       INTEGER NOT NULL DEFAULT 0,
+            typing_wpm          REAL,
+            chars_per_min       REAL    NOT NULL DEFAULT 0.0,
             avg_hold_ms         REAL    NOT NULL DEFAULT 0.0,
             avg_flight_ms       REAL    NOT NULL DEFAULT 0.0,
             error_rate          REAL    NOT NULL DEFAULT 0.0,
-            pause_count         INTEGER NOT NULL DEFAULT 0,
+            pause_count         REAL    NOT NULL DEFAULT 0.0,
             avg_pause_ms        REAL    NOT NULL DEFAULT 0.0,
             typing_variance     REAL    NOT NULL DEFAULT 0.0,
 
@@ -115,6 +124,67 @@ pub fn init_db(path: &str) -> Result<()> {
             updated_at            TEXT    NOT NULL DEFAULT (datetime('now'))
         );
     ")?;
+
+    // ── Migration: fix chars_per_min / pause_count column types ──────────────
+    //
+    // SQLite does not support ALTER COLUMN, so the migration uses the
+    // recommended rename-recreate-copy-drop approach.
+    // We gate it on a user_version pragma so it only runs once.
+    //
+    // user_version 0 → 1 : chars_per_min and pause_count INTEGER → REAL
+    //                       typing_wpm INTEGER → REAL (for consistency)
+    let current_version: i64 =
+        conn.query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap_or(0);
+
+    if current_version < 1 {
+        conn.execute_batch("
+            -- Rename the old table
+            ALTER TABLE behavior_data RENAME TO behavior_data_old;
+
+            -- Create with corrected column types
+            CREATE TABLE behavior_data (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id          INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                timestamp           TEXT    NOT NULL DEFAULT (datetime('now')),
+                created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+
+                typing_wpm          REAL,
+                chars_per_min       REAL    NOT NULL DEFAULT 0.0,
+                avg_hold_ms         REAL    NOT NULL DEFAULT 0.0,
+                avg_flight_ms       REAL    NOT NULL DEFAULT 0.0,
+                error_rate          REAL    NOT NULL DEFAULT 0.0,
+                pause_count         REAL    NOT NULL DEFAULT 0.0,
+                avg_pause_ms        REAL    NOT NULL DEFAULT 0.0,
+                typing_variance     REAL    NOT NULL DEFAULT 0.0,
+
+                avg_cursor_speed    REAL    NOT NULL DEFAULT 0.0,
+                movement_distance   REAL    NOT NULL DEFAULT 0.0,
+                click_rate          REAL    NOT NULL DEFAULT 0.0,
+                double_click_rate   REAL    NOT NULL DEFAULT 0.0,
+                scroll_rate         REAL    NOT NULL DEFAULT 0.0,
+                idle_time_pct       REAL    NOT NULL DEFAULT 0.0,
+                avg_hover_ms        REAL    NOT NULL DEFAULT 0.0,
+                avg_acceleration    REAL    NOT NULL DEFAULT 0.0,
+                movement_smoothness REAL    NOT NULL DEFAULT 0.0,
+
+                active_window       TEXT,
+                active_process      TEXT
+            );
+
+            -- Copy all existing rows; SQLite casts INTEGER values to REAL
+            INSERT INTO behavior_data SELECT * FROM behavior_data_old;
+
+            DROP TABLE behavior_data_old;
+
+            CREATE INDEX IF NOT EXISTS idx_behavior_session
+                ON behavior_data(session_id);
+            CREATE INDEX IF NOT EXISTS idx_behavior_timestamp
+                ON behavior_data(timestamp);
+
+            PRAGMA user_version = 1;
+        ")?;
+    }
 
     Ok(())
 }

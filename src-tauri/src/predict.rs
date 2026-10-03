@@ -1,17 +1,11 @@
 // predict.rs — ONNX-based ML inference (replaces Python cogniload_ml sidecar)
 //
-// At startup the ONNX model is loaded from <app_data>/model.onnx and
-// <app_data>/scaler_params.json (mean + scale vectors produced by convert_model.py).
-//
 // Commands:
 //   predict_load(token, session_id, behavior_id, payload) → Prediction
 //   get_predictions(token, session_id, limit)              → Vec<Prediction>
 
 use ndarray::Array2;
-use ort::{
-    session::Session,
-    value::Tensor,
-};
+use ort::{session::Session, value::Tensor};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, OnceLock};
@@ -21,11 +15,13 @@ use crate::auth::decode_access_token;
 use crate::behavior::BehaviorPayload;
 use crate::db::{open, DbPath};
 
-
+// The ONNX input node name. Verify with:
+//   python -c "import onnx; m=onnx.load('model.onnx'); print(m.graph.input[0].name)"
+const ONNX_INPUT_NAME: &str = "float_input";
 
 const LABELS: [&str; 3] = ["low", "medium", "high"];
 
-// ── Scaler params (loaded from JSON) ──────────────────────────────────────────
+// ── Scaler params ─────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
 struct ScalerParams {
@@ -33,35 +29,28 @@ struct ScalerParams {
     scale: Vec<f32>,
 }
 
-// ── Global ORT session (lazy-init) ────────────────────────────────────────────
+// ── Lazy globals ──────────────────────────────────────────────────────────────
 
 static ORT_SESSION: OnceLock<Mutex<Session>> = OnceLock::new();
-static SCALER:      OnceLock<ScalerParams> = OnceLock::new();
+static SCALER:      OnceLock<ScalerParams>   = OnceLock::new();
 
 fn ort_session(app: &tauri::AppHandle) -> Result<&'static Mutex<Session>, String> {
-    if let Some(session) = ORT_SESSION.get() {
-        return Ok(session);
+    if let Some(s) = ORT_SESSION.get() {
+        return Ok(s);
     }
-
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
-
-    let model_path = data_dir.join("model.onnx");
-
+    let model_path = app.path().app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("model.onnx");
     if !model_path.exists() {
         return Err(format!(
-            "model.onnx not found at {}. Run scripts/convert_model.py first.",
+            "model.onnx not found at {}. Place it in src-tauri/resources/ for dev.",
             model_path.display()
         ));
     }
-
     let session = Session::builder()
-        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("ORT builder: {e}"))?
         .commit_from_file(&model_path)
-        .map_err(|e| e.to_string())?;
-
+        .map_err(|e| format!("ORT load model: {e}"))?;
     Ok(ORT_SESSION.get_or_init(|| Mutex::new(session)))
 }
 
@@ -69,27 +58,19 @@ fn scaler(app: &tauri::AppHandle) -> Result<&'static ScalerParams, String> {
     if let Some(s) = SCALER.get() {
         return Ok(s);
     }
-
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
-
-    let scaler_path = data_dir.join("scaler_params.json");
-    if !scaler_path.exists() {
-        return Err(format!(
-            "scaler_params.json not found at {}. Run scripts/convert_model.py first.",
-            scaler_path.display()
-        ));
+    let path = app.path().app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("scaler_params.json");
+    if !path.exists() {
+        return Err(format!("scaler_params.json not found at {}.", path.display()));
     }
-
-    let bytes  = std::fs::read(&scaler_path).map_err(|e| e.to_string())?;
-    let params: ScalerParams = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
-
-    Ok(SCALER.get_or_init(|| params))
+    let sp: ScalerParams = serde_json::from_slice(
+        &std::fs::read(&path).map_err(|e| e.to_string())?
+    ).map_err(|e| e.to_string())?;
+    Ok(SCALER.get_or_init(|| sp))
 }
 
-// ── Inference helper ──────────────────────────────────────────────────────────
+// ── Inference ─────────────────────────────────────────────────────────────────
 
 fn run_inference(
     app:     &tauri::AppHandle,
@@ -97,53 +78,61 @@ fn run_inference(
 ) -> Result<(String, f32, [f32; 3]), String> {
     let sc = scaler(app)?;
 
-    // Build feature vector in FEATURE_ORDER
     let raw: [f64; 17] = [
-        payload.typing_wpm.unwrap_or(0.0), payload.chars_per_min, payload.avg_hold_ms,
-        payload.avg_flight_ms,    payload.error_rate,       payload.pause_count,
-        payload.avg_pause_ms,     payload.typing_variance,  payload.avg_cursor_speed,
-        payload.movement_distance,payload.click_rate,       payload.double_click_rate,
-        payload.scroll_rate,      payload.idle_time_pct,    payload.avg_hover_ms,
+        payload.typing_wpm.unwrap_or(0.0),
+        payload.chars_per_min,    payload.avg_hold_ms,
+        payload.avg_flight_ms,    payload.error_rate,
+        payload.pause_count,      payload.avg_pause_ms,
+        payload.typing_variance,  payload.avg_cursor_speed,
+        payload.movement_distance,payload.click_rate,
+        payload.double_click_rate,payload.scroll_rate,
+        payload.idle_time_pct,    payload.avg_hover_ms,
         payload.avg_acceleration, payload.movement_smoothness,
     ];
 
-    // Standardise: (x - mean) / scale
-    let scaled: Vec<f32> = raw
-        .iter()
-        .zip(sc.mean.iter())
-        .zip(sc.scale.iter())
+    let scaled: Vec<f32> = raw.iter()
+        .zip(&sc.mean)
+        .zip(&sc.scale)
         .map(|((x, m), s)| ((*x as f32) - m) / s.max(1e-8))
         .collect();
 
-    let input = Array2::<f32>::from_shape_vec((1, 17), scaled)
+    // ── ort 2.0.0-rc.13 correct API ──────────────────────────────────────────
+    //
+    // Step 1: Wrap the ndarray into an ort::value::Tensor<f32>.
+    //   Tensor::from_array() accepts an owned Array<T,D> (OwnedTensorArrayData).
+    //   It returns Result<Tensor<f32>>, and Tensor<f32> = Value<Tensor<f32>>
+    //   which implements Into<SessionInputValue> via From<Value<T>>.
+    //
+    // Step 2: Pass it to ort::inputs! — no .map_err() because inputs! is
+    //   infallible (it just builds a Vec).
+    //
+    // Step 3: Extract output with try_extract_array::<f32>() which returns
+    //   Result<ndarray::ArrayViewD<'_, f32>> — iterate directly, no .1 needed.
+    let input: Array2<f32> = Array2::from_shape_vec((1, 17), scaled)
         .map_err(|e| e.to_string())?;
 
-    let session_mutex = ort_session(app)?;
-    let mut sess = session_mutex
-        .lock()
-        .map_err(|e| format!("Failed to lock ONNX session: {e}"))?;
+    let tensor = Tensor::<f32>::from_array(input)
+        .map_err(|e| format!("ORT tensor create: {e}"))?;
 
-    let tensor = Tensor::from_array(input)
-        .map_err(|e| e.to_string())?;
+    let sess_mutex = ort_session(app)?;
+    let mut sess = sess_mutex.lock().unwrap_or_else(|p| p.into_inner());
 
     let outputs = sess
-        .run(ort::inputs![tensor])
-        .map_err(|e| e.to_string())?;
+        .run(ort::inputs![ONNX_INPUT_NAME => tensor])
+        .map_err(|e| format!("ORT run: {e}"))?;
 
-    let (_, output_data) = outputs[0]
-        .try_extract_tensor::<f32>()
-        .map_err(|e| e.to_string())?;
+    let view = outputs[0]
+        .try_extract_array::<f32>()
+        .map_err(|e| format!("ORT extract: {e}"))?;
 
-    let p: Vec<f32> = output_data.to_vec();
+    let flat: Vec<f32> = view.iter().copied().collect();
     let scores = [
-        p.get(0).copied().unwrap_or(0.0),
-        p.get(1).copied().unwrap_or(0.0),
-        p.get(2).copied().unwrap_or(0.0),
+        flat.first().copied().unwrap_or(0.0),
+        flat.get(1).copied().unwrap_or(0.0),
+        flat.get(2).copied().unwrap_or(0.0),
     ];
 
-    let (max_i, &confidence) = scores
-        .iter()
-        .enumerate()
+    let (max_i, &confidence) = scores.iter().enumerate()
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
         .unwrap();
 
@@ -159,7 +148,7 @@ pub struct Prediction {
     pub behavior_id: Option<i64>,
     pub load_level:  String,
     pub confidence:  f32,
-    pub raw_scores:  String,  // JSON {low:.., medium:.., high:..}
+    pub raw_scores:  String,
     pub created_at:  String,
 }
 
@@ -182,32 +171,23 @@ pub async fn predict_load(
         "low":    scores[0],
         "medium": scores[1],
         "high":   scores[2],
-    })
-    .to_string();
+    }).to_string();
 
     let conn = open(&state.0).map_err(|e| e.to_string())?;
-
     conn.execute(
         "INSERT INTO predictions (session_id, behavior_id, load_level, confidence, raw_scores)
          VALUES (?1, ?2, ?3, ?4, ?5)",
         params![session_id, behavior_id, load_level, confidence, raw_scores],
-    )
-    .map_err(|e| e.to_string())?;
+    ).map_err(|e| e.to_string())?;
 
     let id = conn.last_insert_rowid();
+    let mut stmt = conn.prepare(
+        "SELECT id, session_id, behavior_id, load_level, confidence, raw_scores, created_at
+         FROM predictions WHERE id = ?1",
+    ).map_err(|e| e.to_string())?;
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, session_id, behavior_id, load_level, confidence, raw_scores, created_at
-             FROM predictions WHERE id = ?1",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let pred = stmt
-        .query_row(params![id], row_to_prediction)
-        .map_err(|e| e.to_string())?;
-
-    Ok(pred)
+    stmt.query_row(params![id], row_to_prediction)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -221,24 +201,17 @@ pub async fn get_predictions(
     let conn  = open(&state.0).map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(50);
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, session_id, behavior_id, load_level, confidence, raw_scores, created_at
-             FROM predictions WHERE session_id = ?1
-             ORDER BY created_at DESC LIMIT ?2",
-        )
-        .map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, session_id, behavior_id, load_level, confidence, raw_scores, created_at
+         FROM predictions WHERE session_id = ?1
+         ORDER BY created_at DESC LIMIT ?2",
+    ).map_err(|e| e.to_string())?;
 
-    let preds = stmt
-        .query_map(params![session_id, limit], row_to_prediction)
+    Ok(stmt.query_map(params![session_id, limit], row_to_prediction)
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(preds)
+        .collect())
 }
-
-// ── Row helper ─────────────────────────────────────────────────────────────────
 
 fn row_to_prediction(row: &rusqlite::Row<'_>) -> rusqlite::Result<Prediction> {
     Ok(Prediction {

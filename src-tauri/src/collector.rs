@@ -81,7 +81,9 @@ impl CollectorState {
 
     /// Drain accumulated raw events → compute 17 normalised features → reset buffer.
     pub fn drain_and_compute(&self) -> BehaviorPayload {
-        let mut m = self.metrics.lock().unwrap();
+        let mut m = self.metrics
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let elapsed_secs = m
             .start_time
@@ -158,6 +160,10 @@ impl CollectorState {
 
 // Module-level static for double-click detection — must live outside the closure
 // because a static defined inside a non-Sync closure is unsound.
+//
+// FIX (Bug 4): Use unwrap_or_else(|p| p.into_inner()) everywhere this mutex is
+// locked so that a panic inside the listen closure does not permanently poison
+// the static and break all future double-click detection.
 static LAST_CLICK: Mutex<Option<Instant>> = Mutex::new(None);
 
 pub fn run(app: AppHandle) {
@@ -174,7 +180,9 @@ pub fn run(app: AppHandle) {
             return;
         }
 
-        let mut m = col.metrics.lock().unwrap();
+        let mut m = col.metrics
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let now   = Instant::now();
 
         // Track idle time: if > 2 s gap since last event, count as idle
@@ -277,7 +285,11 @@ pub fn run(app: AppHandle) {
                 m.clicks += 1;
                 // Naive double-click: two clicks within 400 ms
                 // (rdev doesn't expose double-click natively)
-                let mut lc = LAST_CLICK.lock().unwrap();
+                //
+                // FIX (Bug 4): recover from mutex poison instead of panicking.
+                let mut lc = LAST_CLICK
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
                 if let Some(prev) = *lc {
                     if prev.elapsed() < Duration::from_millis(400) {
                         m.double_clicks += 1;
