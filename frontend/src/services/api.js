@@ -1,19 +1,84 @@
 /**
- * api.js — Tauri invoke adapter
+ * api.js — Universal API adapter for CogniLoad
  *
- * All calls that previously went to FastAPI over HTTP now go directly
- * to Rust Tauri commands via invoke().  The public surface (authAPI,
- * sessionAPI, behaviorAPI, predictAPI) is intentionally the same shape
- * so callers in pages/hooks need minimal changes.
+ * Works across THREE environments without any code changes:
  *
- * Token management: access token is stored in localStorage under "token";
- * refresh token under "refreshToken".  Refresh is triggered automatically
- * when an invoke returns the string "Invalid token" / "Token expired".
+ *  1. Tauri desktop shell  (window.__TAURI__ present)
+ *     → invoke() calls Rust commands directly.
+ *
+ *  2. PyInstaller .exe  (Edge opens http://127.0.0.1:8000)
+ *     → fetch() with absolute URL: http://127.0.0.1:8000/api/...
+ *
+ *  3. Uvicorn dev  (Vite on :5173 proxies /api → :8000)
+ *     → fetch() with root-relative /api/... (Vite proxy handles it)
  */
 
-import { invoke } from "@tauri-apps/api/core"
+// ── Runtime detection ─────────────────────────────────────────────────────────
 
-// ── Token helpers ──────────────────────────────────────────────────────────────
+/**
+ * True only when running inside the real Tauri WebView shell.
+ * The PyInstaller .exe opens a plain Edge window — __TAURI__ is NOT injected
+ * there, so this is false and we fall back to HTTP fetch.
+ */
+const IS_TAURI =
+  typeof window !== "undefined" &&
+  typeof window.__TAURI__ !== "undefined" &&
+  window.__TAURI__ !== null
+
+/**
+ * Resolve the API base URL once at startup.
+ *
+ * Rules:
+ *  - Tauri:     not used (invoke() bypasses HTTP entirely)
+ *  - Port 5173/3000/4173 (Vite dev server): root-relative "/api" so Vite's
+ *    proxy forwards requests to the backend on port 8000.
+ *  - Any other port (8000 in the .exe, or any custom port): build a fully
+ *    absolute URL from window.location so fetch() never misresolves.
+ */
+function _resolveApiBase() {
+  if (typeof window === "undefined") {
+    return "http://127.0.0.1:8000/api"  // Node / SSR guard
+  }
+
+  const { protocol, hostname, port } = window.location
+
+  // Vite dev server — use root-relative path, proxy handles the forwarding
+  const VITE_PORTS = ["5173", "3000", "4173"]
+  if (VITE_PORTS.includes(port)) {
+    return "/api"
+  }
+
+  // Production / exe — absolute URL guarantees no misresolution in Edge
+  const portSuffix = port ? `:${port}` : ""
+  return `${protocol}//${hostname}${portSuffix}/api`
+}
+
+const API_BASE = _resolveApiBase()
+
+// Always log the resolved base in non-dev environments so you can confirm
+// it in Edge DevTools (F12 → Console) immediately on page load.
+if (typeof window !== "undefined" && !["5173","3000","4173"].includes(window.location.port)) {
+  console.log("[CogniLoad] IS_TAURI =", IS_TAURI)
+  console.log("[CogniLoad] API_BASE =", API_BASE)
+}
+
+// ── Lazy Tauri invoke import ──────────────────────────────────────────────────
+
+let _invoke = null
+async function getInvoke() {
+  if (_invoke) return _invoke
+  try {
+    const mod = await import("@tauri-apps/api/core")
+    _invoke = mod.invoke
+  } catch {
+    // Not in Tauri — should never reach here because IS_TAURI guards all calls
+    console.warn("[CogniLoad] @tauri-apps/api/core not available")
+    _invoke = async () => { throw new Error("Not in Tauri environment") }
+  }
+  return _invoke
+}
+
+// ── Token helpers ─────────────────────────────────────────────────────────────
 
 export function getToken()        { return localStorage.getItem("token")        ?? "" }
 export function getRefreshToken() { return localStorage.getItem("refreshToken") ?? "" }
@@ -29,53 +94,94 @@ function clearTokens() {
   localStorage.removeItem("user")
 }
 
-// ── Auto-refresh wrapper ───────────────────────────────────────────────────────
+// ── HTTP fetch helper ─────────────────────────────────────────────────────────
 
-let _refreshing   = false
-let _waitQueue    = []
+/**
+ * Make a REST call to the FastAPI backend.
+ *
+ * @param {string} method  - "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+ * @param {string} path    - route path starting with "/", e.g. "/auth/login"
+ * @param {object} opts
+ *   @param {any}    opts.body   - JS object, JSON-serialised automatically
+ *   @param {string} opts.token  - explicit token; "" = no auth header;
+ *                                 undefined = use localStorage token
+ */
+async function httpFetch(method, path, { body, token } = {}) {
+  const headers = { "Content-Type": "application/json" }
+
+  // token === ""  → intentionally no Authorization (login, register, refresh)
+  // token === undefined → fall back to whatever is stored
+  const tok = (token === "" || token === null) ? "" : (token || getToken())
+  if (tok) headers["Authorization"] = `Bearer ${tok}`
+
+  const opts = { method, headers }
+  if (body !== undefined) opts.body = JSON.stringify(body)
+
+  const url = `${API_BASE}${path}`
+  const res = await fetch(url, opts)
+
+  if (res.status === 204) return null
+
+  const text = await res.text()
+  let json
+  try { json = JSON.parse(text) } catch { json = { detail: text } }
+
+  if (!res.ok) {
+    const detail = json?.detail ?? `HTTP ${res.status}`
+    const msg = typeof detail === "string" ? detail : JSON.stringify(detail)
+    const err = new Error(msg)
+    err.status = res.status
+    throw err
+  }
+  return json
+}
+
+// ── Auto-refresh token logic ──────────────────────────────────────────────────
+
+let _refreshing  = false
+let _waitQueue   = []
 
 function _processQueue(err, token = null) {
   _waitQueue.forEach(({ resolve, reject }) => err ? reject(err) : resolve(token))
   _waitQueue = []
 }
 
-const TOKEN_ERRORS = ["Invalid token", "Token expired", "Not an access token"]
-function isAuthError(msg = "") {
-  return TOKEN_ERRORS.some((e) => msg.includes(e))
-}
-
 /**
- * Like invoke() but auto-refreshes the access token on auth errors.
- * Returns the command result directly (no .data wrapper).
+ * Execute an API call with automatic token-refresh on 401.
+ * @param {Function} fn      - async (token: string) => result
+ * @param {string}   cmdName - used to avoid refresh-looping on auth calls
  */
-export async function call(command, args = {}) {
+async function withAutoRefresh(fn, cmdName = "") {
+  const isAuthCmd = /refresh|logout|login|register/i.test(cmdName)
+
   try {
-    return await invoke(command, args)
+    return await fn(getToken())
   } catch (err) {
-    const msg = typeof err === "string" ? err : (err?.message ?? "")
+    const is401 =
+      err?.status === 401 ||
+      // Tauri returns string errors — detect expired token by message
+      (!err?.status && /token expired|invalid.*token|not an access token/i.test(err?.message ?? ""))
 
-    if (!isAuthError(msg)) throw err
+    // Only retry for 401; 404/500/network errors throw immediately
+    if (!is401 || isAuthCmd) throw err
 
-    // Don't try to refresh auth commands themselves
-    if (command.startsWith("refresh_token") || command === "logout") throw err
-
-    const refreshToken = getRefreshToken()
-    if (!refreshToken) { clearTokens(); throw err }
+    const rt = getRefreshToken()
+    if (!rt) { clearTokens(); throw err }
 
     if (_refreshing) {
       return new Promise((resolve, reject) => {
         _waitQueue.push({ resolve, reject })
-      }).then((newToken) => invoke(command, { ...args, token: newToken }))
+      }).then((newToken) => fn(newToken))
     }
 
     _refreshing = true
     try {
-      const result = await invoke("refresh_token", { refresh_token: refreshToken })
+      const result = await _doRefresh(rt)
       const newAccess  = result.access_token
-      const newRefresh = result.refresh_token ?? refreshToken
+      const newRefresh = result.refresh_token ?? rt
       storeTokens(newAccess, newRefresh)
       _processQueue(null, newAccess)
-      return invoke(command, { ...args, token: newAccess })
+      return fn(newAccess)
     } catch (refreshErr) {
       _processQueue(refreshErr)
       clearTokens()
@@ -86,156 +192,269 @@ export async function call(command, args = {}) {
   }
 }
 
-// ── Error helper (same API as before) ─────────────────────────────────────────
+// ── Internal call helpers ─────────────────────────────────────────────────────
+
+async function tauriCall(command, args = {}) {
+  const invoke = await getInvoke()
+  return invoke(command, args)
+}
+
+/**
+ * Universal call — Tauri invoke OR HTTP fetch, chosen automatically.
+ */
+async function universalCall(tauriCmd, tauriArgs, httpMethod, httpPath, httpBody) {
+  if (IS_TAURI) {
+    return withAutoRefresh(
+      (tok) => tauriCall(tauriCmd, { ...tauriArgs, token: tok }),
+      tauriCmd,
+    )
+  }
+  return withAutoRefresh(
+    (tok) => httpFetch(httpMethod, httpPath, { body: httpBody, token: tok }),
+    httpPath,
+  )
+}
+
+async function _doRefresh(refreshToken) {
+  if (IS_TAURI) {
+    return tauriCall("refresh_token", { refresh_token: refreshToken })
+  }
+  return httpFetch("POST", "/auth/refresh", { body: { refresh_token: refreshToken }, token: "" })
+}
+
+// ── Error helper ──────────────────────────────────────────────────────────────
 
 export function getErrorMessage(err, fallback = "Something went wrong. Please try again.") {
   if (!err) return fallback
   return typeof err === "string" ? err : (err?.message ?? fallback)
 }
 
-// ── Auth ───────────────────────────────────────────────────────────────────────
+// ── Auth API ──────────────────────────────────────────────────────────────────
 
 export const authAPI = {
-  register: ({ name, email, password }) =>
-    invoke("register", { name, email, password }),
+  register: ({ name, email, password }) => {
+    if (IS_TAURI) return tauriCall("register", { name, email, password })
+    return httpFetch("POST", "/auth/register", { body: { name, email, password }, token: "" })
+  },
 
-  login: ({ email, password }) =>
-    invoke("login", { email, password }),
+  login: ({ email, password }) => {
+    if (IS_TAURI) return tauriCall("login", { email, password })
+    return httpFetch("POST", "/auth/login", { body: { email, password }, token: "" })
+  },
 
-  logout: () =>
-    invoke("logout", { refresh_token: getRefreshToken() }).finally(clearTokens),
+  logout: () => {
+    const rt = getRefreshToken()
+    clearTokens()
+    if (IS_TAURI) return tauriCall("logout", { refresh_token: rt })
+    return httpFetch("POST", "/auth/logout", { body: { refresh_token: rt }, token: "" })
+  },
 
   profile: () =>
-    call("get_current_user", { token: getToken() }),
+    universalCall("get_current_user", {}, "GET", "/auth/profile", undefined),
 
-  refresh: () =>
-    invoke("refresh_token", { refresh_token: getRefreshToken() }),
+  refresh: () => _doRefresh(getRefreshToken()),
 
-  // updateProfile is not yet a Tauri command; add when needed
-  updateProfile: () => Promise.reject("not implemented"),
+  updateProfile: ({ name, email }) =>
+    universalCall("update_profile", { name, email }, "PATCH", "/auth/profile", { name, email }),
+
+  changePassword: ({ current_password, new_password }) =>
+    universalCall(
+      "change_password", { current_password, new_password },
+      "POST", "/auth/change-password", { current_password, new_password },
+    ),
 }
 
-// ── Sessions ───────────────────────────────────────────────────────────────────
+// ── Session API ───────────────────────────────────────────────────────────────
 
 export const sessionAPI = {
   start: () =>
-    call("start_session", { token: getToken() }),
+    universalCall("start_session", {}, "POST", "/session/start", undefined),
 
   end: (sessionId) =>
-    call("end_session", { token: getToken(), session_id: sessionId }),
+    universalCall(
+      "end_session", { session_id: sessionId },
+      "POST", "/session/end", { session_id: sessionId },
+    ),
+
+  current: () =>
+    universalCall("get_current_session", {}, "GET", "/session/current", undefined),
+
+  pause: () =>
+    universalCall("pause_session", {}, "POST", "/session/pause", undefined),
+
+  resume: () =>
+    universalCall("resume_session", {}, "POST", "/session/resume", undefined),
 
   list: () =>
-    call("get_sessions", { token: getToken() }),
-
-  get: (sessionId) =>
-    call("get_session", { token: getToken(), session_id: sessionId }),
+    universalCall("get_sessions", {}, "GET", "/dashboard/history", undefined),
 }
 
-// ── Behavior ───────────────────────────────────────────────────────────────────
+// ── Behavior API ──────────────────────────────────────────────────────────────
 
 export const behaviorAPI = {
-  /**
-   * Drain the native collector and write a behavior row.
-   * sessionId is required; the payload is computed in Rust.
-   */
-  flush: (sessionId) =>
-    call("flush_behavior", { token: getToken(), session_id: sessionId }),
+  flush: (sessionId) => {
+    if (IS_TAURI) {
+      return universalCall(
+        "flush_behavior", { session_id: sessionId },
+        "POST", `/behavior/flush`, { session_id: sessionId },
+      )
+    }
+    // In exe mode the pynput collector pushes behavior automatically server-side
+    return Promise.resolve({ id: null, session_id: sessionId })
+  },
 
   history: (sessionId, limit = 50) =>
-    call("get_behavior_history", { token: getToken(), session_id: sessionId, limit }),
+    universalCall(
+      "get_behavior_history", { session_id: sessionId, limit },
+      "GET", `/behavior/history?session_id=${sessionId}&limit=${limit}`, undefined,
+    ),
 }
 
-// ── Predictions ────────────────────────────────────────────────────────────────
+// ── Prediction API ────────────────────────────────────────────────────────────
 
 export const predictAPI = {
-  /**
-   * Run ONNX inference on a BehaviorPayload object.
-   * payload shape must match BehaviorPayload in behavior.rs.
-   */
-  predict: (sessionId, payload, behaviorId = null) =>
-    call("predict_load", {
-      token:       getToken(),
-      session_id:  sessionId,
-      behavior_id: behaviorId,
-      payload,
-    }),
+  predict: (sessionId, payload, behaviorId = null) => {
+    if (IS_TAURI) {
+      return universalCall(
+        "predict_load", { session_id: sessionId, behavior_id: behaviorId, payload },
+        "POST", "/prediction/predict", { session_id: sessionId, behavior_id: behaviorId, ...payload },
+      )
+    }
+    // In exe mode predictions run server-side
+    return Promise.resolve(null)
+  },
 
   list: (sessionId, limit = 50) =>
-    call("get_predictions", { token: getToken(), session_id: sessionId, limit }),
+    universalCall(
+      "get_predictions", { session_id: sessionId, limit },
+      "GET", `/prediction/list?session_id=${sessionId}&limit=${limit}`, undefined,
+    ),
 }
 
-// ── Collector control ──────────────────────────────────────────────────────────
+// ── Collector API ─────────────────────────────────────────────────────────────
 
 export const collectorAPI = {
-  setEnabled: (enabled) =>
-    invoke("set_tracking_enabled", { enabled }),
+  setEnabled: (enabled) => {
+    if (IS_TAURI) return tauriCall("set_tracking_enabled", { enabled })
+    return Promise.resolve({ enabled })
+  },
 
-  status: () =>
-    invoke("get_tracking_status"),
+  status: () => {
+    if (IS_TAURI) return tauriCall("get_tracking_status")
+    return Promise.resolve({ enabled: false, mode: "system" })
+  },
 }
 
-// ── Settings ───────────────────────────────────────────────────────────────────
+// ── Settings API ──────────────────────────────────────────────────────────────
 
 export const settingsAPI = {
   get: () =>
-    call("get_settings", { token: getToken() }),
+    universalCall("get_settings", {}, "GET", "/settings", undefined),
 
   update: (payload) =>
-    call("update_settings", { token: getToken(), ...payload }),
+    universalCall("update_settings", payload, "PUT", "/settings", payload),
 
-  getAutostart: () =>
-    invoke("get_autostart"),
+  getAutostart: () => {
+    if (IS_TAURI) return tauriCall("get_autostart")
+    return httpFetch("GET", "/settings/autostart")
+  },
 
-  enableAutostart: () =>
-    invoke("set_autostart", { enabled: true }),
+  enableAutostart: () => {
+    if (IS_TAURI) return tauriCall("set_autostart", { enabled: true })
+    return httpFetch("POST", "/settings/autostart")
+  },
 
-  disableAutostart: () =>
-    invoke("set_autostart", { enabled: false }),
+  disableAutostart: () => {
+    if (IS_TAURI) return tauriCall("set_autostart", { enabled: false })
+    return httpFetch("DELETE", "/settings/autostart")
+  },
 }
 
-// ── Profile & password ─────────────────────────────────────────────────────────
-
-// Extend authAPI with profile-mutation methods
-authAPI.updateProfile = ({ name, email }) =>
-  call("update_profile", { token: getToken(), name, email })
-
-authAPI.changePassword = ({ current_password, new_password }) =>
-  call("change_password", { token: getToken(), current_password, new_password })
-
-// ── Dashboard / model / recommendations / history / CSV ───────────────────────
+// ── Dashboard API ─────────────────────────────────────────────────────────────
 
 export const dashboardAPI = {
   overview: () =>
-    call("get_overview", { token: getToken() }),
+    universalCall("get_overview", {}, "GET", "/dashboard/overview", undefined),
 
-  history: ({ page, per_page, from_date, to_date } = {}) =>
-    call("get_history", { token: getToken(), page, per_page, from_date, to_date }),
+  history: ({ page = 1, per_page = 20, from_date, to_date } = {}) => {
+    const params = new URLSearchParams({ page, per_page })
+    if (from_date) params.set("from_date", from_date)
+    if (to_date)   params.set("to_date",   to_date)
+    return universalCall(
+      "get_history", { page, per_page, from_date, to_date },
+      "GET", `/dashboard/history?${params}`, undefined,
+    )
+  },
 
   recommendation: () =>
-    call("get_recommendation", { token: getToken() }),
+    universalCall("get_recommendation", {}, "GET", "/recommendation/current", undefined),
 }
+
+// ── Model API ─────────────────────────────────────────────────────────────────
 
 export const modelAPI = {
-  info: () =>
-    invoke("get_model_info"),
+  info: () => {
+    if (IS_TAURI) return tauriCall("get_model_info")
+    return httpFetch("GET", "/model/info")
+  },
 }
+
+// ── Reports API ───────────────────────────────────────────────────────────────
 
 export const reportsAPI = {
-  // Returns raw CSV string; caller builds the Blob
   export: () =>
-    call("export_csv", { token: getToken() }),
+    universalCall("export_csv", {}, "GET", "/reports/export", undefined),
+
+  daily: (days = 14) =>
+    universalCall("get_daily_reports", { days }, "GET", `/reports/daily?days=${days}`, undefined),
+
+  weekly: (weeks = 8) =>
+    universalCall("get_weekly_reports", { weeks }, "GET", `/reports/weekly?weeks=${weeks}`, undefined),
 }
 
-// ── Analytics ──────────────────────────────────────────────────────────────────
+// ── Analytics API ─────────────────────────────────────────────────────────────
 
 export const analyticsAPI = {
   trends: (hours = 24, limit = 500) =>
-    call("get_analytics_trends", { token: getToken(), hours, limit }),
+    universalCall(
+      "get_analytics_trends", { hours, limit },
+      "GET", `/analytics/trends?hours=${hours}&limit=${limit}`, undefined,
+    ),
 
   features: () =>
-    call("get_analytics_features", { token: getToken() }),
+    universalCall("get_analytics_features", {}, "GET", "/analytics/features", undefined),
 }
 
-// Extend reportsAPI with daily / weekly (was only export before)
-reportsAPI.daily  = (days = 14)  => call("get_daily_reports",  { token: getToken(), days })
-reportsAPI.weekly = (weeks = 8)  => call("get_weekly_reports", { token: getToken(), weeks })
+// ── Legacy call() shim ────────────────────────────────────────────────────────
+// Backwards compat for any code still calling call(command, args) directly.
+
+export async function call(command, args = {}) {
+  if (IS_TAURI) {
+    const invoke = await getInvoke()
+    return withAutoRefresh((tok) => invoke(command, { ...args, token: tok }), command)
+  }
+
+  const HTTP_MAP = {
+    get_current_user:       ["GET",  "/auth/profile"],
+    get_overview:           ["GET",  "/dashboard/overview"],
+    get_recommendation:     ["GET",  "/recommendation/current"],
+    get_daily_reports:      ["GET",  `/reports/daily?days=${args.days ?? 14}`],
+    get_weekly_reports:     ["GET",  `/reports/weekly?weeks=${args.weeks ?? 8}`],
+    export_csv:             ["GET",  "/reports/export"],
+    get_analytics_trends:   ["GET",  `/analytics/trends?hours=${args.hours ?? 24}&limit=${args.limit ?? 500}`],
+    get_analytics_features: ["GET",  "/analytics/features"],
+    get_settings:           ["GET",  "/settings"],
+    update_settings:        ["PUT",  "/settings"],
+  }
+
+  const mapped = HTTP_MAP[command]
+  if (mapped) {
+    const [method, path] = mapped
+    return withAutoRefresh(
+      (tok) => httpFetch(method, path, { body: method !== "GET" ? args : undefined, token: tok }),
+      path,
+    )
+  }
+
+  throw new Error(`[CogniLoad api.js] Unmapped HTTP command: "${command}". Add it to HTTP_MAP.`)
+}

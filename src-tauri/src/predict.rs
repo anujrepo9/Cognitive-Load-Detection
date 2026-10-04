@@ -96,18 +96,6 @@ fn run_inference(
         .map(|((x, m), s)| ((*x as f32) - m) / s.max(1e-8))
         .collect();
 
-    // ── ort 2.0.0-rc.13 correct API ──────────────────────────────────────────
-    //
-    // Step 1: Wrap the ndarray into an ort::value::Tensor<f32>.
-    //   Tensor::from_array() accepts an owned Array<T,D> (OwnedTensorArrayData).
-    //   It returns Result<Tensor<f32>>, and Tensor<f32> = Value<Tensor<f32>>
-    //   which implements Into<SessionInputValue> via From<Value<T>>.
-    //
-    // Step 2: Pass it to ort::inputs! — no .map_err() because inputs! is
-    //   infallible (it just builds a Vec).
-    //
-    // Step 3: Extract output with try_extract_array::<f32>() which returns
-    //   Result<ndarray::ArrayViewD<'_, f32>> — iterate directly, no .1 needed.
     let input: Array2<f32> = Array2::from_shape_vec((1, 17), scaled)
         .map_err(|e| e.to_string())?;
 
@@ -207,10 +195,15 @@ pub async fn get_predictions(
          ORDER BY created_at DESC LIMIT ?2",
     ).map_err(|e| e.to_string())?;
 
-    Ok(stmt.query_map(params![session_id, limit], row_to_prediction)
+    // FIX: collect into a variable first so `stmt` and `conn` are not
+    // borrowed across the implicit temporary drop at the end of the block.
+    let rows: Vec<Prediction> = stmt
+        .query_map(params![session_id, limit], row_to_prediction)
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
-        .collect())
+        .collect();
+
+    Ok(rows)
 }
 
 fn row_to_prediction(row: &rusqlite::Row<'_>) -> rusqlite::Result<Prediction> {
