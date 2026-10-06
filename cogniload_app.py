@@ -230,6 +230,27 @@ def start_backend(port: int) -> threading.Thread:
     def _run():
         global _uvicorn_server, _backend_start_error
         try:
+            # ── Clear stale module cache before importing backend ─────────────
+            # PyInstaller pre-imports many modules during bootstrap and caches
+            # them in sys.modules.  If "main" (or any backend sub-module like
+            # "config", "routes.auth" etc.) is already cached — e.g. from a
+            # previous hot-reload attempt or from PyInstaller's own bootstrap —
+            # __import__("main") silently returns the wrong object, so FastAPI
+            # never registers the /api/* routes and every auth request gets 404.
+            #
+            # We evict the entire backend module tree before importing so Python
+            # always does a fresh load from BACKEND_DIR.
+            _backend_modules = [
+                k for k in list(sys.modules.keys())
+                if k == "main" or k.startswith((
+                    "config", "core", "routes", "database",
+                    "auth", "services", "api", "preprocessing",
+                    "recommendations",
+                ))
+            ]
+            for _mod in _backend_modules:
+                sys.modules.pop(_mod, None)
+
             app_module = __import__("main")
             config = uvicorn.Config(
                 app_module.app,

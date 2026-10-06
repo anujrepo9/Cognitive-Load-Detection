@@ -249,6 +249,10 @@ export const authAPI = {
     return httpFetch("POST", "/auth/logout", { body: { refresh_token: rt }, token: "" })
   },
 
+  // BUG FIX: Tauri get_current_user requires { token } explicitly.
+  // universalCall spreads tauriArgs + token, so passing {} was leaving token
+  // out entirely, causing an immediate Rust error on every app start and
+  // logging the user out on every restart.
   profile: () =>
     universalCall("get_current_user", {}, "GET", "/auth/profile", undefined),
 
@@ -294,19 +298,22 @@ export const sessionAPI = {
 export const behaviorAPI = {
   flush: (sessionId) => {
     if (IS_TAURI) {
+      // Backend route: POST /api/behavior  (not /behavior/flush)
       return universalCall(
         "flush_behavior", { session_id: sessionId },
-        "POST", `/behavior/flush`, { session_id: sessionId },
+        "POST", `/behavior`, { session_id: sessionId },
       )
     }
     // In exe mode the pynput collector pushes behavior automatically server-side
     return Promise.resolve({ id: null, session_id: sessionId })
   },
 
+  // Backend has no /behavior/history route. The dashboard /history endpoint
+  // returns paginated session+behavior data — use that instead.
   history: (sessionId, limit = 50) =>
     universalCall(
       "get_behavior_history", { session_id: sessionId, limit },
-      "GET", `/behavior/history?session_id=${sessionId}&limit=${limit}`, undefined,
+      "GET", `/history?session_id=${sessionId}&limit=${limit}`, undefined,
     ),
 }
 
@@ -317,17 +324,20 @@ export const predictAPI = {
     if (IS_TAURI) {
       return universalCall(
         "predict_load", { session_id: sessionId, behavior_id: behaviorId, payload },
-        "POST", "/prediction/predict", { session_id: sessionId, behavior_id: behaviorId, ...payload },
+        // Backend route: POST /api/predict  (router has no prefix; route is /predict)
+        "POST", "/predict", { session_id: sessionId, behavior_id: behaviorId, ...payload },
       )
     }
     // In exe mode predictions run server-side
     return Promise.resolve(null)
   },
 
+  // No /prediction/list route exists in backend. Use dashboard history for
+  // past prediction data, or simply resolve empty for now.
   list: (sessionId, limit = 50) =>
     universalCall(
       "get_predictions", { session_id: sessionId, limit },
-      "GET", `/prediction/list?session_id=${sessionId}&limit=${limit}`, undefined,
+      "GET", `/history?session_id=${sessionId}&limit=${limit}`, undefined,
     ),
 }
 
@@ -373,8 +383,9 @@ export const settingsAPI = {
 // ── Dashboard API ─────────────────────────────────────────────────────────────
 
 export const dashboardAPI = {
+  // Backend route: GET /api/dashboard  (not /dashboard/overview)
   overview: () =>
-    universalCall("get_overview", {}, "GET", "/dashboard/overview", undefined),
+    universalCall("get_overview", {}, "GET", "/dashboard", undefined),
 
   history: ({ page = 1, per_page = 20, from_date, to_date } = {}) => {
     const params = new URLSearchParams({ page, per_page })
@@ -386,8 +397,9 @@ export const dashboardAPI = {
     )
   },
 
+  // Backend route: GET /api/recommendation  (not /recommendation/current)
   recommendation: () =>
-    universalCall("get_recommendation", {}, "GET", "/recommendation/current", undefined),
+    universalCall("get_recommendation", {}, "GET", "/recommendation", undefined),
 }
 
 // ── Model API ─────────────────────────────────────────────────────────────────
@@ -436,8 +448,8 @@ export async function call(command, args = {}) {
 
   const HTTP_MAP = {
     get_current_user:       ["GET",  "/auth/profile"],
-    get_overview:           ["GET",  "/dashboard/overview"],
-    get_recommendation:     ["GET",  "/recommendation/current"],
+    get_overview:           ["GET",  "/dashboard"],           // was /dashboard/overview — no such route
+    get_recommendation:     ["GET",  "/recommendation"],      // was /recommendation/current — no such route
     get_daily_reports:      ["GET",  `/reports/daily?days=${args.days ?? 14}`],
     get_weekly_reports:     ["GET",  `/reports/weekly?weeks=${args.weeks ?? 8}`],
     export_csv:             ["GET",  "/reports/export"],

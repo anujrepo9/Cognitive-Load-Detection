@@ -36,7 +36,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 1440)
 MODEL_PATH                 = _resolve_path("MODEL_PATH",      "ml/saved_models/model.joblib")
 SCALER_PATH                = _resolve_path("SCALER_PATH",     "ml/saved_models/scaler.joblib")
 MODEL_META_PATH            = _resolve_path("MODEL_META_PATH", "ml/saved_models/meta.json")
-CORS_ORIGINS               = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+CORS_ORIGINS               = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:8000,http://localhost:8000",
+).split(",")
 
 # ── New settings (Phase 2) ───────────────────────────────────────────────────
 JWT_REFRESH_SECRET        = os.getenv("JWT_REFRESH_SECRET", SECRET_KEY + "-refresh")

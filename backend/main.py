@@ -71,6 +71,7 @@ app.add_middleware(
         "http://localhost:8000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:4173",
         "http://127.0.0.1:8000",
         *CORS_ORIGINS,
     ],
@@ -112,14 +113,24 @@ _static_path = Path(_static_dir) if _static_dir else None
 
 if _static_path and _static_path.exists():
 
-    # Mount named sub-directories first (these take priority in Starlette)
+    # Mount named sub-directories first (these take priority in Starlette).
+    # Wrap each mount in try/except: if the dist/ folder exists but is a
+    # partial/corrupted build (missing assets/ sub-dir), StaticFiles() would
+    # raise at startup and kill the backend — making ALL routes including
+    # /api/auth/register return connection errors instead of 404.
     _assets_dir = _static_path / "assets"
     if _assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
+        try:
+            app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
+        except Exception as _e:
+            logger.warning(f"Could not mount /assets — skipping: {_e}")
 
     _icons_dir = _static_path / "icons"
     if _icons_dir.exists():
-        app.mount("/icons", StaticFiles(directory=str(_icons_dir)), name="icons")
+        try:
+            app.mount("/icons", StaticFiles(directory=str(_icons_dir)), name="icons")
+        except Exception as _e:
+            logger.warning(f"Could not mount /icons — skipping: {_e}")
 
     # ── SPA catch-all via Starlette middleware ────────────────────────────────
     #
@@ -141,14 +152,25 @@ if _static_path and _static_path.exists():
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.responses import Response
 
-    _API_PREFIXES = ("/api/", "/docs", "/health", "/assets/", "/icons/", "/openapi.json")
+    _API_PREFIXES = (
+        "/api/",        # all REST routes  (with trailing slash)
+        "/api",         # exact /api root and /api?... queries (no trailing slash)
+        "/docs",
+        "/health",
+        "/assets/",
+        "/icons/",
+        "/openapi.json",
+    )
 
     class SPAMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
             path = request.url.path
 
-            # Let all API and asset paths pass through unchanged
-            if any(path.startswith(p) for p in _API_PREFIXES):
+            # Let all API and asset paths pass through unchanged.
+            # Check both startswith AND exact equality so /api itself is never
+            # intercepted, which would return index.html and the browser would
+            # silently report the JSON-parse failure as a 404.
+            if any(path.startswith(p) for p in _API_PREFIXES) or path == "/api":
                 return await call_next(request)
 
             # Try to serve the exact file from dist/ (JS chunks, CSS, etc.)
