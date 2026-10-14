@@ -39,6 +39,7 @@ export function useWebSocket(enabled = true) {
   const retryCountRef     = useRef(0)
   const retryTimerRef     = useRef(null)
   const heartbeatTimerRef = useRef(null)
+  const connectTimerRef   = useRef(null)
   const mountedRef        = useRef(true)
 
   // ── Heartbeat guard ───────────────────────────────────────────────────────
@@ -71,6 +72,15 @@ export function useWebSocket(enabled = true) {
     const ws = new WebSocket(url)
     wsRef.current = ws
 
+    // If the handshake hangs (e.g. dev server not proxying /ws) the browser would
+    // stay in "connecting" forever. Give up after 8 s so the UI can show the
+    // problem and retry with back-off.
+    clearTimeout(connectTimerRef.current)
+    connectTimerRef.current = setTimeout(() => {
+      console.warn(`[CogniLoad] WebSocket did not connect within 8s: ${WS_BASE}/ws/predictions`)
+      ws.close()
+    }, 8_000)
+
     ws.onopen = () => {
       if (!mountedRef.current) { ws.close(); return }
       // Don't set "connected" yet — wait for server's {"type":"connected"} frame
@@ -85,6 +95,7 @@ export function useWebSocket(enabled = true) {
 
         switch (msg.type) {
           case "connected":
+            clearTimeout(connectTimerRef.current)
             setStatus("connected")
             resetHeartbeatTimer()
             break
@@ -104,6 +115,8 @@ export function useWebSocket(enabled = true) {
               scores:     msg.scores,
               session_id: msg.session_id,
               typing_wpm: msg.typing_wpm,
+              keys_pressed: msg.keys_pressed,
+              mouse_events: msg.mouse_events,
             })
             break
 
@@ -120,6 +133,7 @@ export function useWebSocket(enabled = true) {
     }
 
     ws.onclose = (event) => {
+      clearTimeout(connectTimerRef.current)
       clearTimeout(heartbeatTimerRef.current)
       if (!mountedRef.current) return
 
@@ -168,6 +182,7 @@ export function useWebSocket(enabled = true) {
       clearTimeout(initTimer)
       clearTimeout(retryTimerRef.current)
       clearTimeout(heartbeatTimerRef.current)
+      clearTimeout(connectTimerRef.current)
       wsRef.current?.close()
     }
   }, [enabled, connect])

@@ -4,6 +4,8 @@ import {
 } from "react"
 import { useAuth } from "./AuthContext"
 import { sessionAPI, behaviorAPI, predictAPI, collectorAPI } from "../services/api"
+import { useWebSocket } from "../hooks/useWebSocket"
+import { isTauri } from "../hooks/useTauri"
 
 const TrackingContext = createContext(null)
 
@@ -17,6 +19,12 @@ export function TrackingProvider({ children }) {
   const [consentOpen,   setConsentOpen]   = useState(false)
   const [session,       setSession]       = useState(null)
   const [prediction,    setPrediction]    = useState(null)
+  // Browser/.exe build: the Python collector pushes predictions server-side and the
+  // backend broadcasts them over /ws/predictions. (Tauri build uses invoke() instead.)
+  const ws = useWebSocket(isAuth && !isTauri)
+  // Fallback when the WebSocket is not connected: pick up the latest saved prediction by polling.
+  const [polledPrediction, setPolledPrediction] = useState(null)
+  const lastPredCountRef = useRef(0)
   const [error,         setError]         = useState(null)
   const [flushMs,       setFlushMs]       = useState(DEFAULT_FLUSH_MS)
 
@@ -52,13 +60,41 @@ export function TrackingProvider({ children }) {
     return () => clearInterval(flushTimerRef.current)
   }, [trackingState, flush, flushMs])
 
+  // ── Collector health (HTTP mode): poll /session/current so the UI can show
+  //    whether the system-wide collector process is really running.
+  useEffect(() => {
+    if (isTauri || trackingState !== "tracking") return
+    let alive = true
+    const poll = () => sessionAPI.current()
+      .then((cur) => {
+        if (!alive || !cur) return
+        setSession((prev) => prev ? { ...prev, ...cur, id: prev.id } : prev)
+        if (cur.latest_load && cur.prediction_count !== lastPredCountRef.current) {
+          lastPredCountRef.current = cur.prediction_count
+          setPolledPrediction({
+            load_level: cur.latest_load,
+            confidence: cur.latest_confidence ?? 0,
+            session_id: cur.session_id,
+            keys_pressed: cur.keys_pressed,
+            mouse_events: cur.mouse_events,
+            typing_wpm:   cur.typing_wpm,
+          })
+        }
+      })
+      .catch(() => {})
+    const id = setInterval(poll, 5_000)
+    poll()
+    return () => { alive = false; clearInterval(id) }
+  }, [trackingState])
+
   // ── Session actions ───────────────────────────────────────────────────────
   const startTracking = useCallback(async () => {
     if (!hasConsent) { setConsentOpen(true); return false }
     setTrackingState("starting"); setError(null)
     try {
       const s = await sessionAPI.start()
-      setSession(s)
+      // HTTP backend returns session_id; the Tauri commands return id
+      setSession({ ...s, id: s.id ?? s.session_id })
       await collectorAPI.setEnabled(true)
       setTrackingState("tracking")
       return true
@@ -98,6 +134,8 @@ export function TrackingProvider({ children }) {
       if (session) await sessionAPI.end(session.id)
       setSession(null)
       setPrediction(null)
+      setPolledPrediction(null)
+      lastPredCountRef.current = 0
       setTrackingState("idle")
     } catch {
       setTrackingState("paused")
@@ -117,20 +155,50 @@ export function TrackingProvider({ children }) {
     }
   }, [isAuth])
 
+  // Prefer the WebSocket push (has WPM + counts); fall back to the polled value.
+  const livePrediction = isTauri ? prediction : (ws.prediction ?? polledPrediction ?? prediction)
+
+  // Running totals for the session: each prediction carries only that flush window's counts.
+  const [totals, setTotals] = useState({ keys: 0, mouse: 0 })
+  const lastCountedRef = useRef(null)
+  useEffect(() => {
+    if (trackingState === "idle") {
+      lastCountedRef.current = null
+      setTotals({ keys: 0, mouse: 0 })
+    }
+  }, [trackingState])
+  useEffect(() => {
+    const p = livePrediction
+    if (!p || (p.keys_pressed == null && p.mouse_events == null)) return
+    const stamp = `${p.session_id}:${p.keys_pressed}:${p.mouse_events}:${p.confidence}:${p.load_level}`
+    if (stamp === lastCountedRef.current) return
+    lastCountedRef.current = stamp
+    setTotals((t) => ({
+      keys:  t.keys  + (p.keys_pressed  || 0),
+      mouse: t.mouse + (p.mouse_events  || 0),
+    }))
+  }, [livePrediction])
+
   const value = useMemo(() => ({
     trackingState,
     session,
-    prediction,
+    prediction: livePrediction,
     error,
     consentOpen,
     // Shims for components that read these from the old WS-based context
-    websocketStatus: "native",   // collector is native — no WS
-    backendStatus:   "online",   // Rust is always local
+    websocketStatus: isTauri ? "native" : ws.status,
+    backendStatus:   "online",
     networkOnline:   true,
-    collectorRunning: trackingState === "tracking",
-    collectorMode:   "native",
-    collectorError:  null,
-    quality: { keyEvents: 0, mouseEvents: 0, ready: trackingState === "tracking" },
+    collectorRunning: isTauri ? trackingState === "tracking" : Boolean(session?.collector_running),
+    collectorMode:   isTauri ? "native" : (session?.collector_mode ?? "system"),
+    collectorError:  isTauri ? null : (session?.collector_error ?? null),
+    quality: {
+      keyEvents:   livePrediction?.keys_pressed ?? 0,
+      mouseEvents: livePrediction?.mouse_events ?? 0,
+      totalKeys:   totals.keys,
+      totalMouse:  totals.mouse,
+      ready: trackingState === "tracking",
+    },
     startTracking,
     pauseTracking,
     resumeTracking,
@@ -139,7 +207,7 @@ export function TrackingProvider({ children }) {
     dismissConsent: () => setConsentOpen(false),
     retry: () => {},
   }), [
-    trackingState, session, prediction, error, consentOpen,
+    trackingState, session, prediction, livePrediction, totals, ws.status, error, consentOpen,
     startTracking, pauseTracking, resumeTracking, endTracking, acceptConsent,
   ])
 

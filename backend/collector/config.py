@@ -45,12 +45,20 @@ class CollectorConfig:
     online_predict: bool = False
 
     @property
+    def _api_base(self) -> str:
+        # The backend mounts every router under /api. Without this prefix the
+        # packaged app's SPA catch-all answers POST /behavior with index.html
+        # (HTTP 200), so the collector thinks the push worked but nothing is saved.
+        base = self.api_url.rstrip("/")
+        return base if base.endswith("/api") else f"{base}/api"
+
+    @property
     def behavior_url(self) -> str:
-        return f"{self.api_url.rstrip('/')}/behavior"
+        return f"{self._api_base}/behavior"
 
     @property
     def predict_url(self) -> str:
-        return f"{self.api_url.rstrip('/')}/predict"
+        return f"{self._api_base}/predict"
 
     def to_dict(self) -> dict:
         return asdict(self)

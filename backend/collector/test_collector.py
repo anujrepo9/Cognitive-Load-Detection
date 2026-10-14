@@ -226,7 +226,7 @@ def test_config_roundtrip():
 def test_config_defaults():
     cfg = CollectorConfig()
     assert cfg.flush_interval == 15
-    assert cfg.behavior_url == "http://localhost:8000/behavior"
+    assert cfg.behavior_url == "http://localhost:8000/api/behavior"
     print("  ✓ config defaults")
 
 

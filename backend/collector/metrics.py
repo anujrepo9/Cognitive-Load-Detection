@@ -125,6 +125,7 @@ def calculate(state: BufferState, window_sec: float) -> dict:
         "duration_s":          round(window_sec, 1),
         "keys_pressed":        key_count,
         "backspaces":          backspaces,
+        "mouse_events":        len(moves) + state.clicks + state.scrolls,
         # keyboard features
         "typing_wpm":          wpm,          # None when not enough typing data
         "chars_per_min":       cpm,

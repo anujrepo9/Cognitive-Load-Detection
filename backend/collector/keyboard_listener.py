@@ -41,8 +41,11 @@ class KeyboardListener:
         key_str = self._key_to_str(key)
         down_id = self._down_id(key, key_str)
 
-        # Ignore auto-repeat while the key is already held
-        if down_id in self._down:
+        # Ignore auto-repeat while the key is already held. A missed key-up
+        # (Alt+Tab, Win+L, an elevated window) would otherwise leave a stale
+        # entry that blocks this key forever, so only trust entries < 5 s old.
+        held_since = self._down.get(down_id)
+        if held_since is not None and (now - held_since) < 5.0:
             return
 
         # Cancel any pending idle timer — user is active

@@ -8,19 +8,19 @@ Phase 4 additions:
     * Acceleration tracking — change in cursor speed between consecutive
       samples (px/s²).
     * Hover-time tracking — time between mousedown and mouseup on the same
-      element region (used for interaction dwell metrics).
+      element region (used for interaction dwell metrics). Now handled in
+      mouse_clicks.py.
 """
 
 import sys
 import time
 from collections import deque
 
-from buffer import EventBuffer, MouseMoveEvent, MouseHoverEvent
+from buffer import EventBuffer, MouseMoveEvent
+from mouse_clicks import ClickTracker
 
 MOVE_THROTTLE_S = 1 / 30   # max 30 move samples per second
-DOUBLE_CLICK_GAP_S = 0.25  # two clicks within this = double-click
 PATH_SEGMENTS = 8          # how many recent move samples to keep
-HOVER_RADIUS_PX = 40       # max movement radius considered "same region" hover
 
 
 class MouseListener:
@@ -36,12 +36,9 @@ class MouseListener:
         # Recent path (x, y, speed) for acceleration / path tracking
         self._path = deque(maxlen=PATH_SEGMENTS)
 
-        # Press-state for hover tracking
-        self._press_x = None
-        self._press_y = None
-        self._press_t = None
+        # Click / double-click / hover handling
+        self._clicks = ClickTracker(buffer, raw_writer)
 
-        self._last_click_time = 0.0    # for double-click detection
         if sys.platform == "win32":
             from win32_input import Win32MouseHook
             self._listener = Win32MouseHook(self._on_move, self._on_click, self._on_scroll)
@@ -89,36 +86,7 @@ class MouseListener:
             self._raw.write("mousemove", f"({x},{y})", now * 1000)
 
     def _on_click(self, x: int, y: int, button, pressed: bool):
-        now = time.time()
-
-        if pressed:
-            # Mouse down — begin hover (dwell) window
-            self._press_x = x
-            self._press_y = y
-            self._press_t = now
-            return
-
-        # Mouse up — compute hover duration if within the same region
-        if self._press_t is not None:
-            dx = (x - self._press_x) if self._press_x is not None else 0
-            dy = (y - self._press_y) if self._press_y is not None else 0
-            dist = (dx * dx + dy * dy) ** 0.5
-            if dist <= HOVER_RADIUS_PX:
-                duration_ms = (now - self._press_t) * 1000
-                self._buf.add_hover(MouseHoverEvent(
-                    duration_ms=round(duration_ms, 2),
-                    timestamp=now * 1000,
-                ))
-            self._press_x = self._press_y = self._press_t = None
-
-        is_double = (now - self._last_click_time) < DOUBLE_CLICK_GAP_S
-        self._buf.add_click(double=is_double)
-        self._buf.mark_active(now)
-        self._last_click_time = now
-
-        if self._raw:
-            label = "doubleclick" if is_double else "click"
-            self._raw.write(label, str(button), now * 1000)
+        self._clicks.on_click(x, y, button, pressed)
 
     def _on_scroll(self, x: int, y: int, dx: int, dy: int):
         now = time.time()

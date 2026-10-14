@@ -155,6 +155,7 @@ def ensure_env(port: int) -> None:
     os.environ["COGNILOAD_ENV_FILE"] = str(ENV_FILE)
     os.environ["DATABASE_URL"]       = env_vals.get("DATABASE_URL") or f"sqlite:///{db_path}"
     os.environ["COGNILOAD_STATIC_DIR"] = str(DIST_DIR)
+    os.environ["COGNILOAD_DATA_DIR"]   = str(DATA_DIR)
 
     # Set remaining values only if not already present
     for key, value in env_vals.items():
@@ -320,6 +321,11 @@ def open_app_in_browser() -> None:
 def quit_app(icon=None, item=None) -> None:
     print("[APP] Quit requested")
     stop_collector()
+    try:
+        import collector_process
+        collector_process.stop()
+    except Exception:
+        pass
     stop_backend()
     if icon:
         icon.stop()
@@ -538,7 +544,8 @@ def main() -> None:
     # Start the global keyboard/mouse collector after backend is up.
     # pynput captures keystrokes system-wide, unlike the browser tracker
     # which only sees keys typed inside the WebView2 window.
-    start_collector(args.port)
+    # NOTE: the collector is started by POST /api/session/start (backend/collector_process.py)
+    # with a fresh JWT. Starting a second one here would double-hook the keyboard.
 
     # Open the app in browser
     if not args.no_browser:
@@ -559,5 +566,20 @@ def main() -> None:
             stop_backend()
 
 
+def run_collector_mode(argv: list) -> None:
+    """Entry used when the frozen exe is re-launched as the input collector."""
+    import importlib.util
+    cdir = BASE_DIR / "backend" / "collector"
+    sys.path.insert(0, str(cdir))
+    spec = importlib.util.spec_from_file_location("cogniload_collector_main", cdir / "main.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.main(argv)
+
+
 if __name__ == "__main__":
+    if "--run-collector" in sys.argv:
+        sys.argv.remove("--run-collector")
+        run_collector_mode(sys.argv[1:])
+        sys.exit(0)
     main()

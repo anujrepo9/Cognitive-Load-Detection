@@ -117,7 +117,8 @@ export default function LiveMonitoring() {
   // React to prediction pushes (both WebSocket and HTTP response via onPrediction callback)
   useEffect(() => {
     if (!prediction) return
-    const { load_level, confidence: conf, typing_wpm } = prediction
+    const { load_level, confidence: conf, typing_wpm, keys_pressed } = prediction
+    if (keys_pressed > 0) setTotalKeys((t) => t + keys_pressed)
     const time = new Date().toLocaleTimeString()
     setLoadLevel(load_level)
     setConfidence(Math.round(conf * 100))
@@ -207,7 +208,7 @@ export default function LiveMonitoring() {
         <StatCard label="Typing WPM"   value={liveWpm}                        icon={Keyboard}
           accent="success"  sub="Live words per minute" />
         <StatCard label="Mouse events" value={liveMouseEvents}                icon={MousePointerClick}
-          accent="warning"  sub="Clicks and moves this interval" />
+          accent="warning"  sub={`This interval · ${quality?.totalMouse ?? 0} this session`} />
         <StatCard label="Keys typed" value={totalKeys} icon={Keyboard}
           accent="primary" sub="Total keystrokes this session" />
       </div>

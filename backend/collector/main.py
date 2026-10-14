@@ -41,6 +41,11 @@ from config import CollectorConfig, load_config, save_config
 from offline_queue import PushQueue
 import secure_store
 import autostart
+from pathlib import Path
+
+# When launched by the desktop app, COGNILOAD_DATA_DIR points at a writable
+# folder. The install dir (Program Files / PyInstaller bundle) is not writable.
+_DATA_DIR = Path(os.environ["COGNILOAD_DATA_DIR"]) if os.environ.get("COGNILOAD_DATA_DIR") else None
 
 # ── Feature columns sent to the API ──────────────────────────────────────────
 API_FEATURES = [
@@ -75,6 +80,9 @@ def build_payload(row: dict) -> dict:
             payload[k] = int(val) if val is not None else 0
         else:
             payload[k] = float(val) if val is not None else 0.0
+    # Display-only counts for the live dashboard
+    payload["keys_pressed"] = int(row.get("keys_pressed", 0) or 0)
+    payload["mouse_events"] = int(row.get("mouse_events", 0) or 0)
     return payload
 
 
@@ -84,6 +92,7 @@ def send_rows_to_api(rows: list, cfg: CollectorConfig) -> tuple[list, list]:
     if cfg.api_token:
         headers["Authorization"] = f"Bearer {cfg.api_token}"
     url = cfg.predict_url if cfg.online_predict else cfg.behavior_url
+    _printed_err = False
     for row in rows:
         payload = build_payload(row)
         try:
@@ -92,14 +101,24 @@ def send_rows_to_api(rows: list, cfg: CollectorConfig) -> tuple[list, list]:
             if resp.status_code in (200, 201):
                 successes.append(row)
             elif resp.status_code == 401:
-                print("  [api] 401 — token rejected. Check your token.")
+                if not _printed_err:
+                    print("  [api] 401 — token rejected. Check your token.", flush=True)
+                    _printed_err = True
                 failures.append(row)
             else:
-                print(f"  [api] HTTP {resp.status_code} {url}")
+                if not _printed_err:
+                    print(f"  [api] HTTP {resp.status_code} {url} {resp.text[:200]}", flush=True)
+                    _printed_err = True
                 failures.append(row)
         except requests.RequestException as exc:
-            print(f"  [api] request failed: {exc}")
+            if not _printed_err:
+                print(f"  [api] request failed: {exc}", flush=True)
+                _printed_err = True
             failures.append(row)
+    if successes:
+        print(f"  [api] sent {len(successes)} row(s) OK -> {url}", flush=True)
+    if failures:
+        print(f"  [api] {len(failures)} row(s) failed, queued for retry", flush=True)
     return successes, failures
 
 
@@ -236,6 +255,8 @@ def main(argv=None):
         print("  Token saved.")
         return
 
+    if args.config is None and _DATA_DIR:
+        args.config = str(_DATA_DIR / "collector_config.json")
     cfg = load_config(args.config)
     if args.interval  is not None: cfg.flush_interval = args.interval
     if args.api_url   is not None: cfg.api_url = args.api_url
@@ -274,14 +295,14 @@ def main(argv=None):
 
     buf   = EventBuffer()
     stop  = threading.Event()
-    queue = PushQueue()
-    raw_w = RawEventWriter() if args.raw else None
+    queue = PushQueue(str(_DATA_DIR / "pending_queue.jsonl")) if _DATA_DIR else PushQueue()
+    raw_w = RawEventWriter(str(_DATA_DIR / "output" / "raw_events.csv")) if (args.raw and _DATA_DIR) else (RawEventWriter() if args.raw else None)
 
     kb_listener  = KeyboardListener(buf, raw_writer=raw_w)
     ms_listener  = MouseListener(buf,   raw_writer=raw_w)
     win_tracker  = WindowTracker(buf) if use_win_tracker else None
 
-    with CSVWriter() as csv_w:
+    with (CSVWriter(str(_DATA_DIR / "output" / "behavior_data.csv")) if _DATA_DIR else CSVWriter()) as csv_w:
         kb_listener.start()
         ms_listener.start()
         if win_tracker:
