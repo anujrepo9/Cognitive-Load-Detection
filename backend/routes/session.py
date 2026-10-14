@@ -49,6 +49,8 @@ def _session_response(db: Session, sess: UserSession) -> CurrentSessionResponse:
         .first()
     )
     running = collector_process.is_running()
+    from routes.prediction import LATEST_COUNTS
+    counts = LATEST_COUNTS.get(sess.id, {})
     return CurrentSessionResponse(
         session_id=sess.id,
         start_time=sess.start_time,
@@ -59,6 +61,9 @@ def _session_response(db: Session, sess: UserSession) -> CurrentSessionResponse:
         collector_running=running,
         collector_mode="system" if running else "browser",
         collector_error=None if running else collector_process.last_error(),
+        keys_pressed=counts.get("keys_pressed"),
+        mouse_events=counts.get("mouse_events"),
+        typing_wpm=counts.get("typing_wpm"),
     )
 
 

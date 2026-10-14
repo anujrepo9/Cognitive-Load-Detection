@@ -113,6 +113,15 @@ hiddenimports = [
     "PIL",
     "PIL.Image",
     "PIL.ImageDraw",
+    # Input collector (run as `CogniLoad.exe --run-collector`)
+    "websockets",
+    "websockets.legacy",
+    "requests",
+    "psutil",
+    "keyring",
+    "keyring.backends",
+    "keyring.backends.Windows",
+    "winreg",
 ]
 
 hiddenimports += collect_submodules("uvicorn")

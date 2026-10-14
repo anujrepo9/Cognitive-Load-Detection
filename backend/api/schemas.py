@@ -113,6 +113,9 @@ class BehaviorPayload(BaseModel):
     avg_hover_ms:        float = 0.0
     avg_acceleration:    float = 0.0
     movement_smoothness: float = 0.0
+    # Display-only counts for the live dashboard (not stored, not ML features)
+    keys_pressed:        Optional[int] = None
+    mouse_events:        Optional[int] = None
 
 
 class BehaviorResponse(BaseModel):
@@ -187,6 +190,9 @@ class CurrentSessionResponse(BaseModel):
     collector_running: bool = False
     collector_mode:    str = "browser"
     collector_error:   Optional[str] = None
+    keys_pressed:      Optional[int] = None
+    mouse_events:      Optional[int] = None
+    typing_wpm:        Optional[float] = None
 
     _normalize_start = field_validator("start_time", mode="before")(_as_utc)
 

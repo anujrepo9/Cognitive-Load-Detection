@@ -15,7 +15,8 @@ from pathlib import Path
 
 _COLLECTOR_DIR  = Path(__file__).parent / "collector"
 _COLLECTOR_MAIN = _COLLECTOR_DIR / "main.py"
-_LOG_PATH       = _COLLECTOR_DIR / "collector.log"
+_DATA_DIR       = Path(os.environ["COGNILOAD_DATA_DIR"]) if os.environ.get("COGNILOAD_DATA_DIR") else _COLLECTOR_DIR
+_LOG_PATH       = _DATA_DIR / "collector.log"
 
 _proc: subprocess.Popen | None = None
 _lock = threading.Lock()
@@ -45,9 +46,13 @@ def start(api_url: str, token: str, flush_interval: int = 15) -> bool:
             print(f"[collector_process] ERROR: {_last_error}")
             return False
 
-        cmd = [
-            sys.executable,
-            str(_COLLECTOR_MAIN),
+        # Frozen (PyInstaller) build: sys.executable is CogniLoad.exe itself, not
+        # a Python interpreter, so re-enter the exe in collector mode instead.
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable, "--run-collector"]
+        else:
+            cmd = [sys.executable, "-u", str(_COLLECTOR_MAIN)]
+        cmd += [
             "--api-url",  api_url,
             "--token",    token,
             "--interval", str(flush_interval),
@@ -68,7 +73,7 @@ def start(api_url: str, token: str, flush_interval: int = 15) -> bool:
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 creationflags=creationflags,
-                env={**os.environ},
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
             )
             time.sleep(0.6)
             if _proc.poll() is not None:

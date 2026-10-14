@@ -398,7 +398,7 @@ export default function Dashboard() {
             <div className="space-y-3">
               {[
                 { icon: Keyboard,          label: "Typing events",  value: quality?.totalKeys > 0 ? quality.totalKeys : (stats?.typing_events ?? "—") },
-                { icon: MousePointerClick, label: "Mouse clicks",   value: stats?.mouse_events   ?? "—" },
+                { icon: MousePointerClick, label: "Mouse clicks",   value: quality?.totalMouse > 0 ? quality.totalMouse : (stats?.mouse_events ?? "—") },
                 { icon: Cpu,              label: "Avg WPM",        value: stats?.avg_wpm        ?? "—" },
                 { icon: BrainCircuit,     label: "Model version",  value: modelInfo?.version ? `v${modelInfo.version}` : "rule-based" },
               ].map(({ icon: Icon, label, value }) => (

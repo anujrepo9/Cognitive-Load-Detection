@@ -83,6 +83,9 @@ user32.PostThreadMessageW.argtypes = [wintypes.DWORD, wintypes.UINT, wintypes.WP
 user32.PostThreadMessageW.restype = wintypes.BOOL
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+# Without these, ctypes treats the HMODULE as a 32-bit int and truncates it on 64-bit Python.
+kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+kernel32.GetModuleHandleW.restype = wintypes.HMODULE
 
 
 class AnonKey:
@@ -135,7 +138,11 @@ class _HookThread:
             try:
                 self._proc(wparam, lparam)
             except Exception:
-                pass
+                import traceback, sys
+                try:
+                    print("[win32_input] hook callback error:\n" + traceback.format_exc(), file=sys.stderr, flush=True)
+                except Exception:
+                    pass
         return user32.CallNextHookEx(self._hook, n_code, wparam, lparam)
 
     def start(self) -> None:
@@ -154,11 +161,24 @@ class _HookThread:
 
     def _run(self) -> None:
         self._thread_id = kernel32.GetCurrentThreadId()
-        hmod = kernel32.GetModuleHandleW(None)
-        self._hook = user32.SetWindowsHookExW(self._hook_id, self._cb, hmod, 0)
+        # Low-level hooks run in the installing thread, so hMod is barely used,
+        # but some Windows builds reject a bad value (error 126). Try several.
+        candidates = [
+            ("exe module", kernel32.GetModuleHandleW(None)),
+            ("user32.dll", kernel32.GetModuleHandleW("user32.dll")),
+            ("NULL", None),
+        ]
+        errors = []
+        self._hook = None
+        for label, hmod in candidates:
+            ctypes.set_last_error(0)
+            hook = user32.SetWindowsHookExW(self._hook_id, self._cb, hmod, 0)
+            if hook:
+                self._hook = hook
+                break
+            errors.append(f"{label}: Win32 error {ctypes.get_last_error()}")
         if not self._hook:
-            err = ctypes.get_last_error()
-            self._failed = f"SetWindowsHookEx failed (Win32 error {err})"
+            self._failed = "SetWindowsHookEx failed (" + "; ".join(errors) + ")"
             self._ready.set()
             return
         self._ready.set()

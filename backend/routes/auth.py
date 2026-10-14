@@ -53,6 +53,7 @@ def register(
     )
 
 
+@router.post("/signin", response_model=TokenResponse)
 @router.post("/login", response_model=TokenResponse)
 def login(
     body: LoginRequest,

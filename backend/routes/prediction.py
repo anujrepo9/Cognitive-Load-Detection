@@ -12,6 +12,10 @@ from routes.behavior import _get_or_create_active_session
 
 router = APIRouter(tags=["prediction"])
 
+# Latest display-only counts per session (keys / mouse events in the last flush).
+# Lets GET /session/current serve them when the WebSocket is not connected.
+LATEST_COUNTS: dict[int, dict] = {}
+
 
 async def _broadcast_prediction(user_id: int, payload: dict) -> None:
     """Push prediction to all WebSocket subscribers for this user (best-effort)."""
@@ -67,12 +71,20 @@ async def predict(
     db.add(record)
     db.commit()
 
+    LATEST_COUNTS[session.id] = {
+        "keys_pressed": payload.keys_pressed or 0,
+        "mouse_events": payload.mouse_events or 0,
+        "typing_wpm":   payload.typing_wpm,
+    }
+
     ws_payload = {
         "load_level": result["load_level"],
         "confidence": result["confidence"],
         "scores":     result["scores"],
         "session_id": session.id,
         "typing_wpm":  payload.typing_wpm,
+        "keys_pressed": payload.keys_pressed,
+        "mouse_events": payload.mouse_events,
     }
 
     # Broadcast to WebSocket clients — background so HTTP response isn't delayed
