@@ -1,41 +1,25 @@
-import { motion } from "framer-motion"
-
-export default function ProgressRing({
-  value = 0, size = 120, strokeWidth = 10, color = "var(--color-primary)",
-  trackColor = "rgba(148, 163, 184, 0.15)", label, sublabel, className = "",
-}) {
-  const radius = (size - strokeWidth) / 2
-  const circumference = 2 * Math.PI * radius
-  const offset = circumference - (value / 100) * circumference
+export default function ProgressRing({ value = 0, size = 80, strokeWidth = 7, color = "#6366f1", bg = "#e0e7ff", label }) {
+  const r = (size - strokeWidth) / 2
+  const circ = 2 * Math.PI * r
+  const offset = circ - (value / 100) * circ
 
   return (
-    <div className={`relative inline-flex items-center justify-center ${className}`}
-      style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle
-          cx={size / 2} cy={size / 2} r={radius}
-          fill="none" stroke={trackColor} strokeWidth={strokeWidth}
-        />
-        <motion.circle
-          cx={size / 2} cy={size / 2} r={radius}
-          fill="none" stroke={color} strokeWidth={strokeWidth}
+    <div className="relative inline-flex items-center justify-center">
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size / 2} cy={size / 2} r={r}
+          stroke={bg} strokeWidth={strokeWidth} fill="none" />
+        <circle cx={size / 2} cy={size / 2} r={r}
+          stroke={color} strokeWidth={strokeWidth} fill="none"
+          strokeDasharray={circ} strokeDashoffset={offset}
           strokeLinecap="round"
-          strokeDasharray={circumference}
-          initial={{ strokeDashoffset: circumference }}
-          animate={{ strokeDashoffset: offset }}
-          transition={{ duration: 1, ease: "easeOut" }}
+          style={{ transition: "stroke-dashoffset 0.5s ease" }}
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-bold text-gray-900 dark:text-white">
+      {label !== undefined && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
           {label}
-        </span>
-        {sublabel && (
-          <span className="text-[10px] text-gray-400 uppercase tracking-wider">
-            {sublabel}
-          </span>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
