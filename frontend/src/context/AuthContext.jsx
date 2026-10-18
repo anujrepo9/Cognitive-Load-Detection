@@ -3,9 +3,28 @@ import { authAPI } from "../services/api"
 
 const AuthContext = createContext(null)
 
+// Safe JSON parse: returns null for null, "undefined", "", or any invalid JSON
+// instead of throwing. This prevents a crash on first launch after a bad session
+// stored the literal string "undefined" (from JSON.stringify(undefined) → undefined
+// → localStorage coercion → the string "undefined" → JSON.parse throws).
+function _safeParseUser(raw) {
+  if (!raw || raw === "undefined" || raw === "null") return null
+  try { return JSON.parse(raw) } catch { return null }
+}
+
+// Safe localStorage write for user object — never store undefined/null as a string
+function _saveUser(userData) {
+  if (userData == null) {
+    localStorage.removeItem("user")
+  } else {
+    const str = JSON.stringify(userData)
+    if (str !== undefined) localStorage.setItem("user", str)
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user,  setUser]  = useState(
-    () => JSON.parse(localStorage.getItem("user") || "null")
+    () => _safeParseUser(localStorage.getItem("user"))
   )
   const [ready, setReady] = useState(false)
 
@@ -20,9 +39,6 @@ export function AuthProvider({ children }) {
       return
     }
 
-    // Safety net: if the profile call hangs (e.g. Tauri backend not ready yet,
-    // or network issue in web mode), unblock the UI after 8 s instead of
-    // showing a white / blank screen indefinitely.
     const timeout = setTimeout(() => {
       console.warn("[CogniLoad] Auth profile check timed out — clearing session")
       _clearSession()
@@ -34,7 +50,7 @@ export function AuthProvider({ children }) {
       .then((userData) => {
         clearTimeout(timeout)
         setUser(userData)
-        localStorage.setItem("user", JSON.stringify(userData))
+        _saveUser(userData)
         setReady(true)
       })
       .catch(async () => {
@@ -52,15 +68,12 @@ export function AuthProvider({ children }) {
           localStorage.setItem("refreshToken", result.refresh_token ?? latestRefresh)
           const profileData = await authAPI.profile()
           setUser(profileData)
-          localStorage.setItem("user", JSON.stringify(profileData))
+          _saveUser(profileData)
           setReady(true)
         } catch {
           _clearSession()
           setUser(null)
           setReady(true)
-          // Do NOT call window.location.href here — let React Router handle
-          // the redirect via the <Navigate> in GuestLayout. Imperative
-          // navigation causes a full page reload, which breaks Tauri's WebView.
         }
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,7 +82,7 @@ export function AuthProvider({ children }) {
   const login = (userData, token, refreshToken = null) => {
     localStorage.setItem("token",        token)
     localStorage.setItem("refreshToken", refreshToken || "")
-    localStorage.setItem("user",         JSON.stringify(userData))
+    _saveUser(userData)
     setUser(userData)
   }
 
@@ -79,15 +92,6 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
-  // FIX: return a minimal loading indicator instead of null.
-  //
-  // The old code returned null while `ready` was false, which rendered as a
-  // completely white screen. This happens in BOTH web and Tauri — any time
-  // there's a stored token the app makes a network call before painting.
-  //
-  // The spinner below uses only inline styles (no Tailwind, no external CSS)
-  // so it works even before the stylesheet is parsed, and matches both
-  // light and dark OS themes via prefers-color-scheme.
   if (!ready) {
     return (
       <>

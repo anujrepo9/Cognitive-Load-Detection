@@ -7,15 +7,8 @@ const isTauriBuild = process.env.TAURI_ENV_PLATFORM !== undefined;
 export default defineConfig({
   plugins: [react()],
 
-  // CRITICAL FIX — white screen in production .exe
-  //
-  // Tauri serves the built frontend via the asset:// protocol (or http://localhost
-  // on Windows). With base="/", Vite emits absolute paths like /assets/index.js
-  // which resolve correctly in a browser but 404 inside the Tauri WebView.
-  // Setting base="./" makes every asset path relative, so the WebView finds them.
-  //
-  // Safe for the web app: when isTauriBuild is false (plain `vite build` for web
-  // deployment), base stays "/" which is correct for any web server.
+  // CRITICAL: relative base so asset paths work under asset:// in Tauri WebView.
+  // Web deploy keeps "/" which is correct for any web server.
   base: isTauriBuild ? "./" : "/",
 
   server: {
@@ -39,9 +32,20 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+
+    // CRITICAL FIX: Vite 5+ injects an inline <script> modulepreload polyfill
+    // into the built index.html. Tauri's WebView-level CSP "script-src 'self'"
+    // blocks ALL inline scripts, so this polyfill kills the entire JS bundle
+    // before React mounts — causing the white screen.
+    //
+    // Disabling the polyfill for Tauri builds is safe: the Chromium-based
+    // WebView2 (Windows) and WebKit (macOS/Linux) both support native
+    // <link rel="modulepreload"> natively, so the polyfill is unnecessary.
+    //
+    // Web builds keep the polyfill (older browsers may need it).
+    modulePreload: isTauriBuild ? { polyfill: false } : { polyfill: true },
+
     // Keep assets as separate files (not inlined as data URIs).
-    // Tauri's WebView loads them via asset:// — inline base64 blobs can
-    // hit size limits; separate files are more reliable in both environments.
     assetsInlineLimit: 0,
   },
 });

@@ -20,10 +20,13 @@
  * The PyInstaller .exe opens a plain Edge window — __TAURI__ is NOT injected
  * there, so this is false and we fall back to HTTP fetch.
  */
+// Tauri 2 injects window.__TAURI_INTERNALS__ synchronously before any JS runs.
+// withGlobalTauri:true also creates window.__TAURI__ but only after the bundle
+// executes — so __TAURI__ alone is unreliable at module evaluation time.
+// Checking both covers Tauri 1 compat and all Tauri 2 configurations.
 const IS_TAURI =
   typeof window !== "undefined" &&
-  typeof window.__TAURI__ !== "undefined" &&
-  window.__TAURI__ !== null
+  ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
 
 /**
  * Resolve the API base URL once at startup.

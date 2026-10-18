@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react"
 import { collectorAPI } from "../services/api"
 
-// True when running inside the Tauri desktop shell
-export const isTauri = typeof window !== "undefined" && "__TAURI__" in window
+// Tauri 2 injects window.__TAURI_INTERNALS__ synchronously before any JS runs.
+// withGlobalTauri:true also adds window.__TAURI__ but only after the bundle
+// executes. Checking both covers all Tauri 2 configs and Tauri 1 compat.
+export const isTauri =
+  typeof window !== "undefined" &&
+  ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
 
 export function useTauri() {
   const [collectorEnabled, setCollectorEnabled] = useState(false)
@@ -18,3 +22,4 @@ export function useTauri() {
 
   return { isTauri, collectorEnabled }
 }
+
