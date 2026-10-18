@@ -148,7 +148,7 @@ def export_csv(
         "error_rate", "pause_count", "avg_pause_ms", "typing_variance",
         "avg_cursor_speed", "movement_distance", "click_rate",
         "double_click_rate", "scroll_rate", "idle_time_pct",
-        "avg_hover_ms", "movement_smoothness",
+        "avg_hover_ms", "avg_acceleration", "movement_smoothness",
         "load_level", "confidence",
     ])
 
@@ -171,7 +171,7 @@ def export_csv(
                 sess.id,
                 sess.start_time.isoformat() if sess.start_time else "",
                 "", "", "", "", "", "", "", "",
-                "", "", "", "", "", "", "", "",
+                "", "", "", "", "", "", "", "", "",
                 "", "",
             ])
             continue
@@ -186,7 +186,7 @@ def export_csv(
                 b.error_rate, b.pause_count, b.avg_pause_ms, b.typing_variance,
                 b.avg_cursor_speed, b.movement_distance, b.click_rate,
                 b.double_click_rate, b.scroll_rate, b.idle_time_pct,
-                b.avg_hover_ms, b.movement_smoothness,
+                b.avg_hover_ms, b.avg_acceleration, b.movement_smoothness,
                 pred.load_level if pred else "",
                 pred.confidence if pred else "",
             ])

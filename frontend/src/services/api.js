@@ -106,6 +106,15 @@ function clearTokens() {
  *   @param {string} opts.token  - explicit token; "" = no auth header;
  *                                 undefined = use localStorage token
  */
+async function httpFetchRaw(path) {
+  const headers = { "Content-Type": "application/json" }
+  const tok = getToken()
+  if (tok) headers["Authorization"] = `Bearer ${tok}`
+  const res = await fetch(`${API_BASE}${path}`, { method: "GET", headers })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.text()
+}
+
 async function httpFetch(method, path, { body, token } = {}) {
   const headers = { "Content-Type": "application/json" }
 
@@ -414,8 +423,10 @@ export const modelAPI = {
 // ── Reports API ───────────────────────────────────────────────────────────────
 
 export const reportsAPI = {
-  export: () =>
-    universalCall("export_csv", {}, "GET", "/reports/export", undefined),
+  export: () => {
+    if (IS_TAURI) return tauriCall("export_csv", {})
+    return withAutoRefresh(() => httpFetchRaw("/reports/export"), "/reports/export")
+  },
 
   daily: (days = 14) =>
     universalCall("get_daily_reports", { days }, "GET", `/reports/daily?days=${days}`, undefined),

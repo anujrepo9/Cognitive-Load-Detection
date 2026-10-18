@@ -108,7 +108,22 @@ def run():
         else:
             print("[OK] behavior_data.created_at already exists")
 
-        # ── 4. sessions.end_time nullable check (already nullable by design) ──
+        # ── 4. behavior_data — new mouse feature columns ──────────────────────
+        new_behavior_cols = [
+            ("avg_acceleration",    "REAL DEFAULT 0.0"),
+            ("movement_smoothness", "REAL DEFAULT 0.0"),
+        ]
+        for col, col_type in new_behavior_cols:
+            if not col_exists(inspector, "behavior_data", col):
+                print(f"Adding column: behavior_data.{col} ...")
+                conn.execute(text(
+                    f"ALTER TABLE behavior_data ADD COLUMN {col} {col_type}"
+                ))
+                print(f"  [OK] behavior_data.{col} added")
+            else:
+                print(f"[OK] behavior_data.{col} already exists")
+
+        # ── 4b. sessions.end_time nullable check (already nullable by design) ──
         # Nothing to migrate — end_time has always been nullable.
 
         # ── 5. refresh_tokens table ───────────────────────────────────────────

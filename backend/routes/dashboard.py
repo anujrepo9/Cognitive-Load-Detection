@@ -21,7 +21,7 @@ from api.schemas import (
     DashboardResponse, HistoryResponse, HistoryResponsePaginated, SessionOut
 )
 
-router = APIRouter(tags=["dashboard"])
+router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 FEATURE_IMPORTANCE = [
     {"feature": "error_rate",          "importance": 0.21},
@@ -55,7 +55,7 @@ def _session_out(s: UserSession) -> SessionOut:
     )
 
 
-@router.get("/dashboard", response_model=DashboardResponse)
+@router.get("", response_model=DashboardResponse)
 def dashboard(
     db:   Session = Depends(get_db),
     user: User    = Depends(get_current_user),
