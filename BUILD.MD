@@ -140,11 +140,11 @@ Files not listed above are **unchanged** — do not replace them.
 ## Architecture overview
 
 ```
-┌─────────────────────────────────────────┐
-│  Tauri shell (Rust)                     │
-│                                         │
-│  ┌─────────────┐   ┌─────────────────┐  │
-│  │  collector  │   │  SQLite (WAL)   │  │
+┌──────────────────────────────────────────┐
+│  Tauri shell (Rust)                      │
+│                                          │
+│  ┌─────────────┐   ┌─────────────────┐   │
+│  │  collector  │   │  SQLite (WAL)   │   │
 │  │  (rdev)     │──▶│  cogniload.db   │  │
 │  └─────────────┘   └────────┬────────┘  │
 │                             │           │
