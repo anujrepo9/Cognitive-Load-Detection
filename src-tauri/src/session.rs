@@ -127,12 +127,28 @@ pub async fn get_session(
 }
 
 // ── Row helper ─────────────────────────────────────────────────────────────────
+//
+// FIX: SQLite datetime('now') returns "2024-01-15 10:30:00" with no timezone
+// suffix. JavaScript's new Date("2024-01-15 10:30:00") treats that as LOCAL
+// time, so on IST (UTC+5:30) the session appears to have started 5h30m = 330
+// minutes ago — which is exactly the bug reported.
+//
+// Fix: append "Z" so the string becomes "2024-01-15 10:30:00Z", which JS
+// always parses as UTC regardless of the user's local timezone.
+
+fn append_z(s: String) -> String {
+    if s.ends_with('Z') || s.ends_with('+') || s.contains('+') {
+        s
+    } else {
+        format!("{}Z", s)
+    }
+}
 
 fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
     Ok(Session {
         id:         row.get(0)?,
         user_id:    row.get(1)?,
-        start_time: row.get(2)?,
-        end_time:   row.get(3)?,
+        start_time: append_z(row.get::<_, String>(2)?),
+        end_time:   row.get::<_, Option<String>>(3)?.map(append_z),
     })
 }

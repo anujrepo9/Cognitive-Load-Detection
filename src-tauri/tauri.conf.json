@@ -9,6 +9,7 @@
     "beforeBuildCommand": "cd frontend && npm run build"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "CogniLoad",
@@ -21,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: asset: https://asset.localhost; connect-src 'self' ipc: http://ipc.localhost"
     },
     "trayIcon": {
       "iconPath": "icons/icon.png",
@@ -42,6 +43,9 @@
       "nsis": {
         "installMode": "currentUser"
       }
-    }
+    },
+    "resources": [
+      "resources/onnxruntime.dll"
+    ]
   }
 }

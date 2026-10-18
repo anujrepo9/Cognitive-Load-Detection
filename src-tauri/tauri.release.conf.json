@@ -1,9 +1,7 @@
 {
   "bundle": {
     "resources": [
-      "resources/onnxruntime.dll",
-      "resources/model.onnx",
-      "resources/scaler_params.json"
+      "resources/onnxruntime.dll"
     ]
   }
 }

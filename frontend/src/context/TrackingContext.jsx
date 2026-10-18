@@ -38,12 +38,48 @@ export function TrackingProvider({ children }) {
   const flush = useCallback(async () => {
     if (!session) return
     try {
-      // 1. Drain collector buffer → write behavior_data row
+      // 1. Drain collector buffer → write behavior_data row.
+      //    behaviorRecord has shape: { id, session_id, timestamp, typing_wpm,
+      //    chars_per_min, avg_hold_ms, ... (17 feature fields) }
       const behaviorRecord = await behaviorAPI.flush(session.id)
 
-      // 2. Run ONNX inference on that payload
-      const pred = await predictAPI.predict(session.id, behaviorRecord, behaviorRecord.id)
-      setPrediction(pred)
+      // 2. FIX: extract just the 17-feature payload fields before sending to
+      //    predict_load. The Rust command expects a BehaviorPayload (feature
+      //    fields only). Passing the whole BehaviorRecord (which also has id,
+      //    session_id, timestamp) caused a serde deserialization mismatch and
+      //    silently dropped predictions.
+      const {
+        typing_wpm, chars_per_min, avg_hold_ms, avg_flight_ms,
+        error_rate, pause_count, avg_pause_ms, typing_variance,
+        avg_cursor_speed, movement_distance, click_rate, double_click_rate,
+        scroll_rate, idle_time_pct, avg_hover_ms, avg_acceleration,
+        movement_smoothness,
+      } = behaviorRecord
+
+      const behaviorPayload = {
+        typing_wpm, chars_per_min, avg_hold_ms, avg_flight_ms,
+        error_rate, pause_count, avg_pause_ms, typing_variance,
+        avg_cursor_speed, movement_distance, click_rate, double_click_rate,
+        scroll_rate, idle_time_pct, avg_hover_ms, avg_acceleration,
+        movement_smoothness,
+      }
+
+      // 3. Run ONNX inference on the payload
+      const pred = await predictAPI.predict(session.id, behaviorPayload, behaviorRecord.id)
+
+      // 4. FIX: merge behavior data into the prediction object so LiveMonitoring
+      //    can read keys_pressed, mouse_events, typing_wpm from it.
+      //    Rust's Prediction only has { load_level, confidence, raw_scores, ... }.
+      //    LiveMonitoring and TrackingContext both read keys_pressed, mouse_events,
+      //    and typing_wpm from the prediction — those come from the behavior record.
+      if (pred) {
+        setPrediction({
+          ...pred,
+          keys_pressed:  Math.round(behaviorRecord.chars_per_min ?? 0),
+          mouse_events:  Math.round(behaviorRecord.click_rate ?? 0),
+          typing_wpm:    behaviorRecord.typing_wpm ?? null,
+        })
+      }
     } catch {
       // offline or model not ready — silent, will retry next interval
     }
