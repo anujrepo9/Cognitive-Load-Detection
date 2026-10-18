@@ -103,6 +103,9 @@ fn main() {
             session::end_session,
             session::get_sessions,
             session::get_session,
+            session::get_current_session,
+            session::pause_session,
+            session::resume_session,
             // Behavior
             behavior::flush_behavior,
             behavior::get_behavior_history,

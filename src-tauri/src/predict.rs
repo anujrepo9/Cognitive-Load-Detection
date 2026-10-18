@@ -3,22 +3,34 @@
 // Commands:
 //   predict_load(token, session_id, behavior_id, payload) → Prediction
 //   get_predictions(token, session_id, limit)              → Vec<Prediction>
+//
+// FIX: Changed ORT_SESSION from std::sync::Mutex to tokio::sync::Mutex.
+//
+// Root cause of the "End button freezes" bug:
+//   The periodic flush interval (setInterval every 15 s) and the end-session
+//   final flush both call predict_load concurrently.  Both tasks tried to lock
+//   ORT_SESSION using std::sync::Mutex::lock(), which BLOCKS the calling thread.
+//   Since both tasks ran on the same tokio thread, the second lock() blocked the
+//   thread that the first task was suspended on, causing a deadlock — neither
+//   could make progress and the UI spinner froze forever.
+//
+//   tokio::sync::Mutex::lock().await yields to the executor instead of blocking,
+//   so the two tasks can take turns: the first finishes inference, releases the
+//   lock, and the second proceeds normally.
 
 use ndarray::Array2;
 use ort::{session::Session, value::Tensor};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
+use tokio::sync::Mutex;           // ← async-aware mutex; was std::sync::Mutex
 use tauri::Manager;
 
 use crate::auth::decode_access_token;
 use crate::behavior::BehaviorPayload;
 use crate::db::{open, DbPath};
 
-// The ONNX input node name. Verify with:
-//   python -c "import onnx; m=onnx.load('model.onnx'); print(m.graph.input[0].name)"
 const ONNX_INPUT_NAME: &str = "float_input";
-
 const LABELS: [&str; 3] = ["low", "medium", "high"];
 
 // ── Scaler params ─────────────────────────────────────────────────────────────
@@ -34,7 +46,7 @@ struct ScalerParams {
 static ORT_SESSION: OnceLock<Mutex<Session>> = OnceLock::new();
 static SCALER:      OnceLock<ScalerParams>   = OnceLock::new();
 
-fn ort_session(app: &tauri::AppHandle) -> Result<&'static Mutex<Session>, String> {
+async fn get_ort_session(app: &tauri::AppHandle) -> Result<&'static Mutex<Session>, String> {
     if let Some(s) = ORT_SESSION.get() {
         return Ok(s);
     }
@@ -54,7 +66,7 @@ fn ort_session(app: &tauri::AppHandle) -> Result<&'static Mutex<Session>, String
     Ok(ORT_SESSION.get_or_init(|| Mutex::new(session)))
 }
 
-fn scaler(app: &tauri::AppHandle) -> Result<&'static ScalerParams, String> {
+fn get_scaler(app: &tauri::AppHandle) -> Result<&'static ScalerParams, String> {
     if let Some(s) = SCALER.get() {
         return Ok(s);
     }
@@ -72,11 +84,11 @@ fn scaler(app: &tauri::AppHandle) -> Result<&'static ScalerParams, String> {
 
 // ── Inference ─────────────────────────────────────────────────────────────────
 
-fn run_inference(
+async fn run_inference(
     app:     &tauri::AppHandle,
     payload: &BehaviorPayload,
 ) -> Result<(String, f32, [f32; 3]), String> {
-    let sc = scaler(app)?;
+    let sc = get_scaler(app)?;
 
     let raw: [f64; 17] = [
         payload.typing_wpm.unwrap_or(0.0),
@@ -98,12 +110,13 @@ fn run_inference(
 
     let input: Array2<f32> = Array2::from_shape_vec((1, 17), scaled)
         .map_err(|e| e.to_string())?;
-
     let tensor = Tensor::<f32>::from_array(input)
         .map_err(|e| format!("ORT tensor create: {e}"))?;
 
-    let sess_mutex = ort_session(app)?;
-    let mut sess = sess_mutex.lock().unwrap_or_else(|p| p.into_inner());
+    // .lock().await yields to the executor if another task holds the lock,
+    // allowing the other task to finish and release it — no deadlock possible.
+    let sess_mutex = get_ort_session(app).await?;
+    let mut sess   = sess_mutex.lock().await;
 
     let outputs = sess
         .run(ort::inputs![ONNX_INPUT_NAME => tensor])
@@ -153,7 +166,7 @@ pub async fn predict_load(
 ) -> Result<Prediction, String> {
     decode_access_token(&token)?;
 
-    let (load_level, confidence, scores) = run_inference(&app, &payload)?;
+    let (load_level, confidence, scores) = run_inference(&app, &payload).await?;
 
     let raw_scores = serde_json::json!({
         "low":    scores[0],
@@ -195,8 +208,6 @@ pub async fn get_predictions(
          ORDER BY created_at DESC LIMIT ?2",
     ).map_err(|e| e.to_string())?;
 
-    // FIX: collect into a variable first so `stmt` and `conn` are not
-    // borrowed across the implicit temporary drop at the end of the block.
     let rows: Vec<Prediction> = stmt
         .query_map(params![session_id, limit], row_to_prediction)
         .map_err(|e| e.to_string())?

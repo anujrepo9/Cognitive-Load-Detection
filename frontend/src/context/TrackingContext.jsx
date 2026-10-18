@@ -28,7 +28,12 @@ export function TrackingProvider({ children }) {
   const [error,         setError]         = useState(null)
   const [flushMs,       setFlushMs]       = useState(DEFAULT_FLUSH_MS)
 
-  const flushTimerRef = useRef(null)
+  const flushTimerRef      = useRef(null)
+  // Guard: only one flush may be in-flight at a time.  Without this, the
+  // periodic setInterval tick and the final flush inside endTracking can both
+  // call predict_load concurrently, racing on the Rust ORT_SESSION mutex and
+  // causing the "End button freezes forever" deadlock.
+  const flushInProgressRef = useRef(false)
 
   // ── Consent ───────────────────────────────────────────────────────────────
   const consentKey = user ? `cogniload.consent.${user.id}` : null
@@ -37,6 +42,9 @@ export function TrackingProvider({ children }) {
   // ── Flush: drain Rust collector → SQLite → ONNX inference ────────────────
   const flush = useCallback(async () => {
     if (!session) return
+    // Skip if a flush is already in progress — prevents concurrent ORT calls.
+    if (flushInProgressRef.current) return
+    flushInProgressRef.current = true
     try {
       // 1. Drain collector buffer → write behavior_data row.
       //    behaviorRecord has shape: { id, session_id, timestamp, typing_wpm,
@@ -73,15 +81,28 @@ export function TrackingProvider({ children }) {
       //    LiveMonitoring and TrackingContext both read keys_pressed, mouse_events,
       //    and typing_wpm from the prediction — those come from the behavior record.
       if (pred) {
+        // Tauri: BehaviorRecord includes raw_key_presses / raw_mouse_clicks,
+        // the exact counts drained from the collector this flush window.
+        // HTTP/.exe build: those fields are absent (backend doesn't return them),
+        // so fall back to rate × window estimates.
+        const windowMin = flushMs / 60_000
+        const keysThisWindow = behaviorRecord.raw_key_presses != null
+          ? behaviorRecord.raw_key_presses
+          : Math.round((behaviorRecord.chars_per_min ?? 0) * windowMin)
+        const mouseThisWindow = behaviorRecord.raw_mouse_clicks != null
+          ? behaviorRecord.raw_mouse_clicks
+          : Math.round(((behaviorRecord.click_rate ?? 0) + (behaviorRecord.scroll_rate ?? 0)) * windowMin)
         setPrediction({
           ...pred,
-          keys_pressed:  Math.round(behaviorRecord.chars_per_min ?? 0),
-          mouse_events:  Math.round(behaviorRecord.click_rate ?? 0),
+          keys_pressed:  keysThisWindow,
+          mouse_events:  mouseThisWindow,
           typing_wpm:    behaviorRecord.typing_wpm ?? null,
         })
       }
     } catch {
       // offline or model not ready — silent, will retry next interval
+    } finally {
+      flushInProgressRef.current = false
     }
   }, [session])
 
@@ -161,21 +182,38 @@ export function TrackingProvider({ children }) {
 
   const endTracking = useCallback(async () => {
     if (!["tracking", "paused"].includes(trackingState)) return
+    // Remember the pre-ending state so we can roll back to it on failure,
+    // keeping the End button visible so the user can always retry.
+    const prevState = trackingState
     setTrackingState("ending"); setError(null)
     try {
       clearInterval(flushTimerRef.current)
-      // Final flush before ending
-      if (session && trackingState === "tracking") await flush()
-      await collectorAPI.setEnabled(false)
+      // Wait for any in-flight periodic flush to finish before attempting the
+      // final flush.  The in-flight flush holds the Rust ORT mutex; calling
+      // flush() concurrently would race on that mutex and deadlock.
+      if (flushInProgressRef.current) {
+        await new Promise((resolve) => {
+          const wait = setInterval(() => {
+            if (!flushInProgressRef.current) { clearInterval(wait); resolve() }
+          }, 100)
+        })
+      }
+      // Final flush before ending (only when actively tracking, not when paused)
+      if (session && prevState === "tracking") {
+        try { await flush() } catch { /* non-fatal — don't block end on flush error */ }
+      }
+      try { await collectorAPI.setEnabled(false) } catch { /* never fatal */ }
       if (session) await sessionAPI.end(session.id)
       setSession(null)
       setPrediction(null)
       setPolledPrediction(null)
       lastPredCountRef.current = 0
       setTrackingState("idle")
-    } catch {
-      setTrackingState("paused")
-      setError("Unable to end session. Retry.")
+    } catch (e) {
+      // Roll back to the state we were in before clicking End so the
+      // End button remains visible and the user can retry.
+      setTrackingState(prevState)
+      setError("Unable to end session — " + (e?.message ?? "please retry."))
     }
   }, [trackingState, session, flush])
 

@@ -80,7 +80,8 @@ impl CollectorState {
     }
 
     /// Drain accumulated raw events → compute 17 normalised features → reset buffer.
-    pub fn drain_and_compute(&self) -> BehaviorPayload {
+    /// Returns `(payload, raw_key_presses, raw_mouse_clicks)`.
+    pub fn drain_and_compute(&self) -> (BehaviorPayload, u64, u64) {
         let mut m = self.metrics
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -128,31 +129,39 @@ impl CollectorState {
         let movement_smoothness = if m.smoothness_count   > 0 { m.smoothness_sum   / m.smoothness_count   as f64 } else { 0.0 };
         let idle_time_pct       = m.idle_ms / (elapsed_secs * 1000.0) * 100.0;
 
+        // ── Capture raw counts before reset (for UI display) ──────────────────
+        let raw_key_presses  = m.key_presses;
+        let raw_mouse_clicks = m.clicks;
+
         // ── Reset ─────────────────────────────────────────────────────────────
         *m = RawMetrics {
             start_time: Some(Instant::now()),
             ..Default::default()
         };
 
-        BehaviorPayload {
-            typing_wpm,
-            chars_per_min,
-            avg_hold_ms,
-            avg_flight_ms,
-            error_rate,
-            pause_count,
-            avg_pause_ms,
-            typing_variance,
-            avg_cursor_speed,
-            movement_distance,
-            click_rate,
-            double_click_rate,
-            scroll_rate,
-            idle_time_pct,
-            avg_hover_ms,
-            avg_acceleration,
-            movement_smoothness,
-        }
+        (
+            BehaviorPayload {
+                typing_wpm,
+                chars_per_min,
+                avg_hold_ms,
+                avg_flight_ms,
+                error_rate,
+                pause_count,
+                avg_pause_ms,
+                typing_variance,
+                avg_cursor_speed,
+                movement_distance,
+                click_rate,
+                double_click_rate,
+                scroll_rate,
+                idle_time_pct,
+                avg_hover_ms,
+                avg_acceleration,
+                movement_smoothness,
+            },
+            raw_key_presses,
+            raw_mouse_clicks,
+        )
     }
 }
 

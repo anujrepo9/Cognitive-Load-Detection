@@ -46,6 +46,10 @@ pub struct BehaviorRecord {
     pub timestamp:  String,
     #[serde(flatten)]
     pub payload:    BehaviorPayload,
+    /// Raw key-press count for this flush window (not stored in DB, for UI only)
+    pub raw_key_presses:  u64,
+    /// Raw mouse click count for this flush window (not stored in DB, for UI only)
+    pub raw_mouse_clicks: u64,
 }
 
 // ── Commands ───────────────────────────────────────────────────────────────────
@@ -61,7 +65,7 @@ pub async fn flush_behavior(
     decode_access_token(&token)?; // auth check
 
     // Drain and compute metrics from the in-memory collector state
-    let payload = collector.drain_and_compute();
+    let (payload, raw_key_presses, raw_mouse_clicks) = collector.drain_and_compute();
 
     let conn = open(&state.0).map_err(|e| e.to_string())?;
 
@@ -104,9 +108,15 @@ pub async fn flush_behavior(
         )
         .map_err(|e| e.to_string())?;
 
-    let record = stmt
+    let mut record = stmt
         .query_row(params![id], row_to_record)
         .map_err(|e| e.to_string())?;
+
+    // Attach the raw counts that were drained from the collector this window.
+    // These are NOT stored in the DB (they're ephemeral per-flush counts) but
+    // the JS reads them from the returned record to populate the UI stat cards.
+    record.raw_key_presses  = raw_key_presses;
+    record.raw_mouse_clicks = raw_mouse_clicks;
 
     Ok(record)
 }
@@ -171,5 +181,9 @@ fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<BehaviorRecord> {
             avg_acceleration:    row.get(18)?,
             movement_smoothness: row.get(19)?,
         },
+        // Raw counts are not stored in the DB; only flush_behavior fills them
+        // from the live collector drain. History reads always get 0 here.
+        raw_key_presses:  0,
+        raw_mouse_clicks: 0,
     })
 }

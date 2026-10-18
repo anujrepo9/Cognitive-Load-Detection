@@ -126,6 +126,55 @@ pub async fn get_session(
     Ok(s)
 }
 
+/// Returns the most recent open (not yet ended) session for this user, or null.
+/// Mirrors the HTTP GET /session/current endpoint used by the browser build.
+#[tauri::command]
+pub async fn get_current_session(
+    state: tauri::State<'_, DbPath>,
+    token: String,
+) -> Result<Option<Session>, String> {
+    let user_id = decode_access_token(&token)?;
+    let conn    = open(&state.0).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, user_id, start_time, end_time FROM sessions
+             WHERE user_id = ?1 AND end_time IS NULL
+             ORDER BY start_time DESC LIMIT 1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let result = stmt.query_row(params![user_id], row_to_session);
+    match result {
+        Ok(s)                           => Ok(Some(s)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e)                          => Err(e.to_string()),
+    }
+}
+
+/// Tauri shim for pause — the collector is paused via set_tracking_enabled(false)
+/// from JS, but the session route exists in the HTTP build so we expose it here
+/// for completeness.  No-op at the DB level (HTTP build stores paused state
+/// server-side; Tauri keeps it in CollectorState).
+#[tauri::command]
+pub async fn pause_session(
+    _state: tauri::State<'_, DbPath>,
+    token: String,
+) -> Result<(), String> {
+    decode_access_token(&token)?;
+    Ok(())
+}
+
+/// Tauri shim for resume — symmetric with pause_session.
+#[tauri::command]
+pub async fn resume_session(
+    _state: tauri::State<'_, DbPath>,
+    token: String,
+) -> Result<(), String> {
+    decode_access_token(&token)?;
+    Ok(())
+}
+
 // ── Row helper ─────────────────────────────────────────────────────────────────
 //
 // FIX: SQLite datetime('now') returns "2024-01-15 10:30:00" with no timezone
