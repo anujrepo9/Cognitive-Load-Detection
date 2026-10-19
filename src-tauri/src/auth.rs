@@ -203,6 +203,16 @@ pub async fn login(
         return Err("Invalid email or password".into());
     }
 
+    // Revoke all existing active refresh tokens for this user (single-session policy).
+    // Without this, old tokens accumulate and the frontend may re-use a stale one
+    // from a previous session, causing silent auth failures on next app launch.
+    conn.execute(
+        "UPDATE refresh_tokens SET revoked = 1, revoked_at = datetime('now')
+         WHERE user_id = ?1 AND revoked = 0",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
+
     let access  = make_access_token(id)?;
     let refresh = make_refresh_token(id)?;
     store_refresh_token(db_path, id, &refresh, REFRESH_TOKEN_EXPIRY_SECS)?;
