@@ -339,7 +339,8 @@ export const behaviorAPI = {
         "POST", `/behavior`, { session_id: sessionId },
       )
     }
-    // In exe mode the pynput collector pushes behavior automatically server-side
+    // In exe/uvicorn mode the pynput collector pushes behavior automatically server-side.
+    // Return a minimal resolved value so Tauri-path callers that await this don't error.
     return Promise.resolve({ id: null, session_id: sessionId })
   },
 
@@ -353,15 +354,31 @@ export const behaviorAPI = {
 // ── Prediction API ────────────────────────────────────────────────────────────
 
 export const predictAPI = {
+  /**
+   * predict(sessionId, payload, behaviorId)
+   *
+   * Tauri: invoke Rust predict_load command directly.
+   * HTTP (uvicorn dev / .exe):  POST /api/predict with the feature payload.
+   *   - The backend does NOT use session_id or behavior_id from the request
+   *     body; it derives the session from the JWT and creates the BehaviorData
+   *     row itself.  Only send the 17-feature BehaviorPayload fields.
+   */
   predict: (sessionId, payload, behaviorId = null) => {
     if (isTauri()) {
       return universalCall(
         "predict_load", { session_id: sessionId, behavior_id: behaviorId, payload },
-        "POST", "/predict", { session_id: sessionId, behavior_id: behaviorId, ...payload },
+        "POST", "/predict", payload,
       )
     }
-    // In exe mode predictions run server-side
-    return Promise.resolve(null)
+    // HTTP mode (uvicorn dev server OR packaged .exe):
+    // The pynput system collector already pushes to /api/predict automatically.
+    // When the browser tracker is active (no system collector), also push here
+    // so the frontend-collected features produce a prediction + WebSocket push.
+    if (!payload) return Promise.resolve(null)
+    return withAutoRefresh(
+      (tok) => httpFetch("POST", "/predict", { body: payload, token: tok }),
+      "/predict",
+    )
   },
 
   list: (sessionId, limit = 50) =>

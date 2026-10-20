@@ -116,18 +116,18 @@ export default function Settings() {
       </PageHeader>
 
       {error && (
-        <div role="alert" className="rounded-xl bg-red-50 dark:bg-red-900/20
-          border border-red-200 dark:border-red-800 px-4 py-3 text-sm
-          text-red-600 dark:text-red-400 flex items-center gap-2">
+        <div role="alert" className="rounded-xl bg-red-50 dark:bg-red-900/30
+          border border-red-200 dark:border-red-500/30 px-4 py-3 text-sm
+          text-red-700 dark:text-red-300 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
           {error}
         </div>
       )}
 
       {saved && (
-        <div role="status" className="rounded-xl bg-green-50 dark:bg-green-900/20
-          border border-green-200 dark:border-green-800 px-4 py-3 text-sm
-          text-green-700 dark:text-green-300 flex items-center gap-2">
+        <div role="status" className="rounded-xl bg-emerald-50 dark:bg-emerald-900/30
+          border border-emerald-200 dark:border-emerald-500/30 px-4 py-3 text-sm
+          text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden="true" />
           Settings saved successfully.
         </div>
@@ -235,9 +235,9 @@ export default function Settings() {
         </div>
 
         {autostartError && (
-          <div role="alert" className="mb-4 rounded-xl bg-red-50 dark:bg-red-900/20
-            border border-red-200 dark:border-red-800 px-4 py-3 text-sm
-            text-red-600 dark:text-red-400 flex items-center gap-2">
+          <div role="alert" className="mb-4 rounded-xl bg-red-50 dark:bg-red-900/30
+            border border-red-200 dark:border-red-500/30 px-4 py-3 text-sm
+            text-red-700 dark:text-red-300 flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
             {autostartError}
           </div>

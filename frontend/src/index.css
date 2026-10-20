@@ -288,7 +288,7 @@
     box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 1px 2px rgba(0,0,0,0.3);
   }
   .btn-secondary:hover { background: rgba(255,255,255,0.85); border-color: rgba(99,102,241,0.24); }
-  .dark .btn-secondary:hover { background: rgba(40,40,46,0.85); }
+  .dark .btn-secondary:hover { background: rgba(44,44,52,0.92); border-color: rgba(99,102,241,0.22); }
   .btn-secondary:active { transform: scale(0.97); }
   .btn-secondary:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(99,102,241,0.22); }
 
@@ -357,6 +357,12 @@
   }
 
   /* ── Badge ─────────────────────────────────────────────────────────────────── */
+  /*
+   * IMPORTANT: The base .badge class must NOT set a background-color.
+   * Each badge variant supplies its own bg-* and dark:bg-* Tailwind classes.
+   * Without this, Tailwind's dark:bg-* modifiers are overridden by a higher-
+   * specificity CSS rule here, causing the white/near-white bleed in dark mode.
+   */
   .badge {
     display: inline-flex; align-items: center; gap: 0.375rem;
     padding: 0.1875rem 0.5rem;
@@ -364,7 +370,28 @@
     border-radius: 9999px;
     border: 1px solid transparent;
     letter-spacing: -0.005em;
+    background-color: transparent; /* Let Tailwind bg-* classes control this */
   }
+
+  /*
+   * Semantic color pills — explicit dark-mode overrides.
+   *
+   * Tailwind's /50 tint classes (bg-emerald-50, bg-red-50, bg-amber-50) are
+   * very light washes derived from white.  In dark mode they look white.
+   * The dark:bg-*-500/12 pattern is correct but Tailwind's JIT may not
+   * generate arbitrary-opacity classes like /12 unless they appear verbatim
+   * in JSX/CSS.  These explicit CSS rules close that gap for dark mode across
+   * every component: badge, button, alert, status pill.
+   */
+  .dark .pill-success  { background-color: rgba( 52, 199,  89, 0.12); border-color: rgba( 52, 199,  89, 0.20); color: #86efac; }
+  .dark .pill-warning  { background-color: rgba(255, 159,  10, 0.12); border-color: rgba(255, 159,  10, 0.20); color: #fcd34d; }
+  .dark .pill-danger   { background-color: rgba(255,  59,  48, 0.12); border-color: rgba(255,  59,  48, 0.20); color: #fca5a5; }
+  .dark .pill-info     { background-color: rgba( 99, 102, 241, 0.12); border-color: rgba( 99, 102, 241, 0.20); color: #a5b4fc; }
+  .dark .pill-neutral  { background-color: rgba(120, 120, 128, 0.12); border-color: rgba(120, 120, 128, 0.16); color: #a1a1a6; }
+
+  /* Alert boxes (error / success banners inside cards) */
+  .dark .alert-danger  { background-color: rgba(255,  59,  48, 0.10); border-color: rgba(255,  59,  48, 0.18); color: #fca5a5; }
+  .dark .alert-success { background-color: rgba( 52, 199,  89, 0.10); border-color: rgba( 52, 199,  89, 0.18); color: #86efac; }
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

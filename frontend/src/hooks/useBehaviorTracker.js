@@ -23,15 +23,21 @@ export function useBehaviorTracker(enabled = true) {
       return
     }
     settingsAPI.get()
-      .then(({ data }) => {
+      .then((resp) => {
+        // httpFetch / universalCall resolves to the JSON object directly (not { data }).
+        // Accept both shapes for robustness: plain object or { data: ... } wrapper.
+        const data = resp?.data ?? resp
         setSettings({
           loaded: true,
           trackingEnabled: data?.tracking_enabled !== false,
-          flushIntervalMs: (data?.flush_interval_sec || DEFAULT_FLUSH_MS) * 1000,
+          flushIntervalMs: ((data?.flush_interval_sec ?? 0) > 0
+            ? data.flush_interval_sec
+            : DEFAULT_FLUSH_MS / 1000) * 1000,
         })
       })
       .catch(() => {
-        setSettings((current) => ({ ...current, loaded: true, trackingEnabled: false }))
+        // Settings fetch failed — default to enabled so tracking still works
+        setSettings((current) => ({ ...current, loaded: true, trackingEnabled: true }))
       })
   }, [enabled])
 

@@ -50,15 +50,18 @@ export default function Recommendations() {
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
-          bg-accent/10 text-accent text-xs font-semibold">
+          bg-indigo-50 dark:bg-indigo-900/30
+          border border-indigo-200 dark:border-indigo-500/30
+          text-indigo-700 dark:text-indigo-300 text-xs font-semibold">
           <Sparkles className="w-3.5 h-3.5" aria-hidden="true" /> Rule-based engine
         </span>
       </motion.div>
 
       {error && (
-        <div role="alert" className="flex items-start gap-2 rounded-xl bg-red-50
-          dark:bg-red-900/20 border border-red-200 dark:border-red-800
-          px-4 py-3 text-sm text-red-600 dark:text-red-400">
+        <div role="alert" className="flex items-start gap-2 rounded-xl
+          bg-red-50 dark:bg-red-900/30
+          border border-red-200 dark:border-red-500/30
+          px-4 py-3 text-sm text-red-700 dark:text-red-300">
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
           <span>{error}</span>
         </div>

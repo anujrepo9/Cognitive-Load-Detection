@@ -159,8 +159,8 @@ export default function Dashboard() {
             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
               text-[11px] font-semibold transition-colors
               ${wsConnected
-                ? "bg-emerald-50/80 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
-                : "bg-amber-50/80 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300"}`}
+                ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30"
+                : "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30"}`}
               role="status" aria-live="polite">
               {wsConnected ? (
                 <>

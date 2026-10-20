@@ -23,11 +23,11 @@ function formatDuration(seconds) {
 }
 
 const STATUS_UI = {
-  native:       { icon: Wifi,      color: "text-emerald-700 dark:text-emerald-300",  label: "Native",         bg: "bg-emerald-50/80 dark:bg-emerald-500/12" },
-  connected:    { icon: Wifi,      color: "text-emerald-700 dark:text-emerald-300",  label: "Live",          bg: "bg-emerald-50/80 dark:bg-emerald-500/12" },
-  connecting:   { icon: Wifi,      color: "text-amber-700 dark:text-amber-300",     label: "Connecting…",   bg: "bg-amber-50/80 dark:bg-amber-500/12" },
-  reconnecting: { icon: RotateCcw, color: "text-amber-700 dark:text-amber-300",     label: "Reconnecting",  bg: "bg-amber-50/80 dark:bg-amber-500/12" },
-  offline:      { icon: WifiOff,   color: "text-red-700 dark:text-red-300",         label: "Offline",       bg: "bg-red-50/80 dark:bg-red-500/12"  },
+  native:       { icon: Wifi,      color: "text-emerald-700 dark:text-emerald-300",  label: "Native",        bg: "bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-500/30" },
+  connected:    { icon: Wifi,      color: "text-emerald-700 dark:text-emerald-300",  label: "Live",          bg: "bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-500/30" },
+  connecting:   { icon: Wifi,      color: "text-amber-700 dark:text-amber-300",      label: "Connecting…",   bg: "bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-500/30" },
+  reconnecting: { icon: RotateCcw, color: "text-amber-700 dark:text-amber-300",      label: "Reconnecting",  bg: "bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-500/30" },
+  offline:      { icon: WifiOff,   color: "text-red-700 dark:text-red-300",          label: "Offline",       bg: "bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-500/30" },
 }
 
 // Refined tooltip — uses CSS variables so light/dark auto-adapt.
@@ -214,8 +214,8 @@ export default function LiveMonitoring() {
       {!connected && status !== "connecting" && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           role="alert"
-          className="rounded-xl border border-amber-200/70 dark:border-amber-500/25
-            bg-amber-50/70 dark:bg-amber-500/10 px-4 py-3
+          className="rounded-xl border border-amber-200 dark:border-amber-500/30
+            bg-amber-50 dark:bg-amber-900/30 px-4 py-3
             flex items-center gap-3 text-[13px] text-amber-700 dark:text-amber-300">
           <WifiOff className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span>
@@ -279,7 +279,7 @@ export default function LiveMonitoring() {
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1, ease: [0.22, 1, 0.36, 1] }} className="card p-5">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50/80 dark:bg-emerald-500/12
+            <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-900/30
               flex items-center justify-center">
               <Keyboard className="w-[18px] h-[18px] text-emerald-500 dark:text-emerald-300" aria-hidden="true" />
             </div>

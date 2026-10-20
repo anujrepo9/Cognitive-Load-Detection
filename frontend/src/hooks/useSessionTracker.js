@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { behaviorAPI } from "../services/api";
+import { predictAPI } from "../services/api";
 
 // Minimum key events required before a keyboard-driven flush is sent.
 // Lowered from 2 → 1 so a single keypress in a window is still recorded.
@@ -230,10 +230,15 @@ export function useSessionTracker({
     // Reset buffer before the API call so stale events don't accumulate
     resetBuffer();
     try {
-      const { data } = await behaviorAPI.predict(apiPayload);
+      // predictAPI.predict(sessionId, payload) — sessionId is null in HTTP mode
+      // because the backend derives the session from the JWT.
+      const result = await predictAPI.predict(null, apiPayload);
+      // httpFetch returns the JSON object directly (not { data: ... }).
+      // Tauri invoke also returns the object directly.
+      const data = result?.data ?? result
       // Merge the display WPM (which may be null) from local features since the
       // HTTP PredictionResponse schema does not include typing_wpm in its response body.
-      callbacks.current.onPrediction?.({ ...data, typing_wpm: displayWpm });
+      callbacks.current.onPrediction?.({ ...(data ?? {}), typing_wpm: displayWpm });
       return true;
     } catch {
       callbacks.current.onError?.(

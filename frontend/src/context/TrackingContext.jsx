@@ -21,7 +21,7 @@ export function TrackingProvider({ children }) {
   const [prediction,    setPrediction]    = useState(null)
   // Browser/.exe build: the Python collector pushes predictions server-side and the
   // backend broadcasts them over /ws/predictions. (Tauri build uses invoke() instead.)
-  const ws = useWebSocket(isAuth && !isTauri)
+  const ws = useWebSocket(isAuth && !isTauri())
   // Fallback when the WebSocket is not connected: pick up the latest saved prediction by polling.
   const [polledPrediction, setPolledPrediction] = useState(null)
   const lastPredCountRef = useRef(0)
@@ -120,7 +120,7 @@ export function TrackingProvider({ children }) {
   // ── Collector health (HTTP mode): poll /session/current so the UI can show
   //    whether the system-wide collector process is really running.
   useEffect(() => {
-    if (isTauri || trackingState !== "tracking") return
+    if (isTauri() || trackingState !== "tracking") return
     let alive = true
     const poll = () => sessionAPI.current()
       .then((cur) => {
@@ -230,7 +230,7 @@ export function TrackingProvider({ children }) {
   }, [isAuth])
 
   // Prefer the WebSocket push (has WPM + counts); fall back to the polled value.
-  const livePrediction = isTauri ? prediction : (ws.prediction ?? polledPrediction ?? prediction)
+  const livePrediction = isTauri() ? prediction : (ws.prediction ?? polledPrediction ?? prediction)
 
   // Running totals for the session: each prediction carries only that flush window's counts.
   const [totals, setTotals] = useState({ keys: 0, mouse: 0 })
@@ -260,12 +260,12 @@ export function TrackingProvider({ children }) {
     error,
     consentOpen,
     // Shims for components that read these from the old WS-based context
-    websocketStatus: isTauri ? "native" : ws.status,
+    websocketStatus: isTauri() ? "native" : ws.status,
     backendStatus:   "online",
     networkOnline:   true,
-    collectorRunning: isTauri ? trackingState === "tracking" : Boolean(session?.collector_running),
-    collectorMode:   isTauri ? "native" : (session?.collector_mode ?? "system"),
-    collectorError:  isTauri ? null : (session?.collector_error ?? null),
+    collectorRunning: isTauri() ? trackingState === "tracking" : Boolean(session?.collector_running),
+    collectorMode:   isTauri() ? "native" : (session?.collector_mode ?? "system"),
+    collectorError:  isTauri() ? null : (session?.collector_error ?? null),
     quality: {
       keyEvents:   livePrediction?.keys_pressed ?? 0,
       mouseEvents: livePrediction?.mouse_events ?? 0,

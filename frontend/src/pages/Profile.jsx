@@ -78,18 +78,18 @@ export default function Profile() {
         </div>
 
         {error && (
-          <div role="alert" className="flex items-start gap-2 rounded-xl bg-red-50 dark:bg-red-900/20
-            border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-600
-            dark:text-red-400 mb-5">
+          <div role="alert" className="flex items-start gap-2 rounded-xl bg-red-50 dark:bg-red-900/30
+            border border-red-200 dark:border-red-500/30 px-4 py-3 text-sm text-red-700
+            dark:text-red-300 mb-5">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
         {saved && (
-          <div role="status" className="flex items-center gap-2 rounded-xl bg-green-50 dark:bg-green-900/20
-            border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-600
-            dark:text-green-400 mb-5">
+          <div role="status" className="flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/30
+            border border-emerald-200 dark:border-emerald-500/30 px-4 py-3 text-sm text-emerald-700
+            dark:text-emerald-300 mb-5">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             Profile updated successfully.
           </div>
@@ -143,17 +143,17 @@ export default function Profile() {
         </div>
 
         {pwdErr && (
-          <div role="alert" className="flex items-start gap-2 rounded-xl bg-red-50 dark:bg-red-900/20
-            border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-600
-            dark:text-red-400 mb-5">
+          <div role="alert" className="flex items-start gap-2 rounded-xl bg-red-50 dark:bg-red-900/30
+            border border-red-200 dark:border-red-500/30 px-4 py-3 text-sm text-red-700
+            dark:text-red-300 mb-5">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
             <span>{pwdErr}</span>
           </div>
         )}
         {pwdMsg && (
-          <div role="status" className="flex items-center gap-2 rounded-xl bg-green-50 dark:bg-green-900/20
-            border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-600
-            dark:text-green-400 mb-5">
+          <div role="status" className="flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/30
+            border border-emerald-200 dark:border-emerald-500/30 px-4 py-3 text-sm text-emerald-700
+            dark:text-emerald-300 mb-5">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             {pwdMsg}
           </div>
