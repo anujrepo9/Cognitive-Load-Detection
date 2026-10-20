@@ -191,6 +191,9 @@ pub fn init_db(path: &str) -> Result<()> {
 
 /// Helper — get a single user row by id.
 /// Returns (id, name, email, is_active).
+/// Currently used only via direct DB queries in settings.rs; kept public for
+/// future Rust callers (auth refactor, admin commands, etc.).
+#[allow(dead_code)]
 pub fn get_user_by_id(
     conn: &Connection,
     user_id: i64,
@@ -213,6 +216,8 @@ pub fn get_user_by_id(
 
 /// Helper — get a single user row by email.
 /// Returns (id, name, email, password_hash, is_active).
+/// Kept public for future Rust-side login without FastAPI (e.g. offline mode).
+#[allow(dead_code)]
 pub fn get_user_by_email(
     conn: &Connection,
     email: &str,

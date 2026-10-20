@@ -16,17 +16,43 @@
 // ── Runtime detection ─────────────────────────────────────────────────────────
 
 /**
- * True only when running inside the real Tauri WebView shell.
- * The PyInstaller .exe opens a plain Edge window — __TAURI__ is NOT injected
- * there, so this is false and we fall back to HTTP fetch.
+ * isTauri() — lazy function, evaluated on FIRST CALL not at module load time.
+ *
+ * WHY this must be a function, not a top-level const:
+ *
+ *   tauri.conf.json sets `withGlobalTauri: true`, which tells the Tauri runtime
+ *   to inject `window.__TAURI__` synchronously into the WebView page BEFORE the
+ *   HTML document is parsed — but AFTER the Vite JS bundle's own module
+ *   evaluation.  `window.__TAURI_INTERNALS__` is injected even earlier (Tauri 2
+ *   only).  The net result is:
+ *
+ *     • When JavaScript evaluates `const IS_TAURI = "__TAURI__" in window`
+ *       at the TOP LEVEL of this module (import time), the Tauri globals may not
+ *       yet exist → IS_TAURI = false → every auth / session / behavior call
+ *       falls through to HTTP fetch → "Backend unreachable:
+ *       error sending request for url (http://127.0.0.1:8000/api/auth/signin)".
+ *
+ *     • By the time any async function body runs (e.g. authAPI.login()),
+ *       Tauri has completed its synchronous injection, so the check then returns
+ *       true correctly.
+ *
+ *   Converting to a lazy function means the detection runs exactly when the
+ *   result is needed — inside async call-sites — and the race disappears.
+ *
+ * The PyInstaller .exe opens a plain Edge/Chrome window (no WebView injection).
+ * Both globals remain absent at all times → isTauri() returns false → HTTP.
+ *
+ * Cache: once we detect Tauri we cache true; once we detect non-Tauri we also
+ * cache false (the environment cannot change after page load).
  */
-// Tauri 2 injects window.__TAURI_INTERNALS__ synchronously before any JS runs.
-// withGlobalTauri:true also creates window.__TAURI__ but only after the bundle
-// executes — so __TAURI__ alone is unreliable at module evaluation time.
-// Checking both covers Tauri 1 compat and all Tauri 2 configurations.
-const IS_TAURI =
-  typeof window !== "undefined" &&
-  ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
+let _isTauriCache = null
+function isTauri() {
+  if (_isTauriCache !== null) return _isTauriCache
+  _isTauriCache =
+    typeof window !== "undefined" &&
+    ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
+  return _isTauriCache
+}
 
 /**
  * Resolve the API base URL once at startup.
@@ -61,7 +87,7 @@ const API_BASE = _resolveApiBase()
 // Always log the resolved base in non-dev environments so you can confirm
 // it in Edge DevTools (F12 → Console) immediately on page load.
 if (typeof window !== "undefined" && !["5173","3000","4173"].includes(window.location.port)) {
-  console.log("[CogniLoad] IS_TAURI =", IS_TAURI)
+  console.log("[CogniLoad] isTauri() =", isTauri())
   console.log("[CogniLoad] API_BASE =", API_BASE)
 }
 
@@ -74,7 +100,7 @@ async function getInvoke() {
     const mod = await import("@tauri-apps/api/core")
     _invoke = mod.invoke
   } catch {
-    // Not in Tauri — should never reach here because IS_TAURI guards all calls
+    // Not in Tauri — should never reach here because isTauri() guards all calls
     console.warn("[CogniLoad] @tauri-apps/api/core not available")
     _invoke = async () => { throw new Error("Not in Tauri environment") }
   }
@@ -103,7 +129,7 @@ function clearTokens() {
  * Make a REST call to the FastAPI backend.
  *
  * @param {string} method  - "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
- * @param {string} path    - route path starting with "/", e.g. "/auth/login"
+ * @param {string} path    - route path starting with "/", e.g. "/auth/signin"
  * @param {object} opts
  *   @param {any}    opts.body   - JS object, JSON-serialised automatically
  *   @param {string} opts.token  - explicit token; "" = no auth header;
@@ -213,9 +239,10 @@ async function tauriCall(command, args = {}) {
 
 /**
  * Universal call — Tauri invoke OR HTTP fetch, chosen automatically.
+ * isTauri() is called lazily here, well after Tauri has injected its globals.
  */
 async function universalCall(tauriCmd, tauriArgs, httpMethod, httpPath, httpBody) {
-  if (IS_TAURI) {
+  if (isTauri()) {
     return withAutoRefresh(
       (tok) => tauriCall(tauriCmd, { ...tauriArgs, token: tok }),
       tauriCmd,
@@ -228,7 +255,7 @@ async function universalCall(tauriCmd, tauriArgs, httpMethod, httpPath, httpBody
 }
 
 async function _doRefresh(refreshToken) {
-  if (IS_TAURI) {
+  if (isTauri()) {
     return tauriCall("refresh_token", { refresh_token: refreshToken })
   }
   return httpFetch("POST", "/auth/refresh", { body: { refresh_token: refreshToken }, token: "" })
@@ -245,26 +272,23 @@ export function getErrorMessage(err, fallback = "Something went wrong. Please tr
 
 export const authAPI = {
   register: ({ name, email, password }) => {
-    if (IS_TAURI) return tauriCall("register", { name, email, password })
+    if (isTauri()) return tauriCall("register", { name, email, password })
     return httpFetch("POST", "/auth/register", { body: { name, email, password }, token: "" })
   },
 
   login: ({ email, password }) => {
-    if (IS_TAURI) return tauriCall("login", { email, password })
-    return httpFetch("POST", "/auth/login", { body: { email, password }, token: "" })
+    if (isTauri()) return tauriCall("login", { email, password })
+    // Backend accepts both /auth/signin and /auth/login
+    return httpFetch("POST", "/auth/signin", { body: { email, password }, token: "" })
   },
 
   logout: () => {
     const rt = getRefreshToken()
     clearTokens()
-    if (IS_TAURI) return tauriCall("logout", { refresh_token: rt })
+    if (isTauri()) return tauriCall("logout", { refresh_token: rt })
     return httpFetch("POST", "/auth/logout", { body: { refresh_token: rt }, token: "" })
   },
 
-  // BUG FIX: Tauri get_current_user requires { token } explicitly.
-  // universalCall spreads tauriArgs + token, so passing {} was leaving token
-  // out entirely, causing an immediate Rust error on every app start and
-  // logging the user out on every restart.
   profile: () =>
     universalCall("get_current_user", {}, "GET", "/auth/profile", undefined),
 
@@ -309,8 +333,7 @@ export const sessionAPI = {
 
 export const behaviorAPI = {
   flush: (sessionId) => {
-    if (IS_TAURI) {
-      // Backend route: POST /api/behavior  (not /behavior/flush)
+    if (isTauri()) {
       return universalCall(
         "flush_behavior", { session_id: sessionId },
         "POST", `/behavior`, { session_id: sessionId },
@@ -320,8 +343,6 @@ export const behaviorAPI = {
     return Promise.resolve({ id: null, session_id: sessionId })
   },
 
-  // Backend has no /behavior/history route. The dashboard /history endpoint
-  // returns paginated session+behavior data — use that instead.
   history: (sessionId, limit = 50) =>
     universalCall(
       "get_behavior_history", { session_id: sessionId, limit },
@@ -333,10 +354,9 @@ export const behaviorAPI = {
 
 export const predictAPI = {
   predict: (sessionId, payload, behaviorId = null) => {
-    if (IS_TAURI) {
+    if (isTauri()) {
       return universalCall(
         "predict_load", { session_id: sessionId, behavior_id: behaviorId, payload },
-        // Backend route: POST /api/predict  (router has no prefix; route is /predict)
         "POST", "/predict", { session_id: sessionId, behavior_id: behaviorId, ...payload },
       )
     }
@@ -344,8 +364,6 @@ export const predictAPI = {
     return Promise.resolve(null)
   },
 
-  // No /prediction/list route exists in backend. Use dashboard history for
-  // past prediction data, or simply resolve empty for now.
   list: (sessionId, limit = 50) =>
     universalCall(
       "get_predictions", { session_id: sessionId, limit },
@@ -357,12 +375,12 @@ export const predictAPI = {
 
 export const collectorAPI = {
   setEnabled: (enabled) => {
-    if (IS_TAURI) return tauriCall("set_tracking_enabled", { enabled })
+    if (isTauri()) return tauriCall("set_tracking_enabled", { enabled })
     return Promise.resolve({ enabled })
   },
 
   status: () => {
-    if (IS_TAURI) return tauriCall("get_tracking_status")
+    if (isTauri()) return tauriCall("get_tracking_status")
     return Promise.resolve({ enabled: false, mode: "system" })
   },
 }
@@ -377,17 +395,17 @@ export const settingsAPI = {
     universalCall("update_settings", payload, "PUT", "/settings", payload),
 
   getAutostart: () => {
-    if (IS_TAURI) return tauriCall("get_autostart")
+    if (isTauri()) return tauriCall("get_autostart")
     return httpFetch("GET", "/settings/autostart")
   },
 
   enableAutostart: () => {
-    if (IS_TAURI) return tauriCall("set_autostart", { enabled: true })
+    if (isTauri()) return tauriCall("set_autostart", { enabled: true })
     return httpFetch("POST", "/settings/autostart")
   },
 
   disableAutostart: () => {
-    if (IS_TAURI) return tauriCall("set_autostart", { enabled: false })
+    if (isTauri()) return tauriCall("set_autostart", { enabled: false })
     return httpFetch("DELETE", "/settings/autostart")
   },
 }
@@ -395,7 +413,6 @@ export const settingsAPI = {
 // ── Dashboard API ─────────────────────────────────────────────────────────────
 
 export const dashboardAPI = {
-  // Backend route: GET /api/dashboard  (not /dashboard/overview)
   overview: () =>
     universalCall("get_overview", {}, "GET", "/dashboard", undefined),
 
@@ -409,7 +426,6 @@ export const dashboardAPI = {
     )
   },
 
-  // Backend route: GET /api/recommendation  (not /recommendation/current)
   recommendation: () =>
     universalCall("get_recommendation", {}, "GET", "/recommendation", undefined),
 }
@@ -418,7 +434,7 @@ export const dashboardAPI = {
 
 export const modelAPI = {
   info: () => {
-    if (IS_TAURI) return tauriCall("get_model_info")
+    if (isTauri()) return tauriCall("get_model_info")
     return httpFetch("GET", "/model/info")
   },
 }
@@ -427,7 +443,7 @@ export const modelAPI = {
 
 export const reportsAPI = {
   export: () => {
-    if (IS_TAURI) return tauriCall("export_csv", {})
+    if (isTauri()) return tauriCall("export_csv", {})
     return withAutoRefresh(() => httpFetchRaw("/reports/export"), "/reports/export")
   },
 
@@ -455,15 +471,15 @@ export const analyticsAPI = {
 // Backwards compat for any code still calling call(command, args) directly.
 
 export async function call(command, args = {}) {
-  if (IS_TAURI) {
+  if (isTauri()) {
     const invoke = await getInvoke()
     return withAutoRefresh((tok) => invoke(command, { ...args, token: tok }), command)
   }
 
   const HTTP_MAP = {
     get_current_user:       ["GET",  "/auth/profile"],
-    get_overview:           ["GET",  "/dashboard"],           // was /dashboard/overview — no such route
-    get_recommendation:     ["GET",  "/recommendation"],      // was /recommendation/current — no such route
+    get_overview:           ["GET",  "/dashboard"],
+    get_recommendation:     ["GET",  "/recommendation"],
     get_daily_reports:      ["GET",  `/reports/daily?days=${args.days ?? 14}`],
     get_weekly_reports:     ["GET",  `/reports/weekly?weeks=${args.weeks ?? 8}`],
     export_csv:             ["GET",  "/reports/export"],
