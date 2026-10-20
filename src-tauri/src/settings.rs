@@ -17,7 +17,7 @@ use bcrypt::{hash, verify, DEFAULT_COST};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use crate::auth::{decode_access_token, UserInfo};
+use crate::auth::{decode_access_token, JwtSecret, UserInfo};
 use crate::db::{open, DbPath};
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -33,9 +33,10 @@ pub struct Settings {
 #[tauri::command]
 pub async fn get_settings(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
 ) -> Result<Settings, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
@@ -62,13 +63,14 @@ pub async fn get_settings(
 #[tauri::command]
 pub async fn update_settings(
     state:                 tauri::State<'_, DbPath>,
+    jwt:                   tauri::State<'_, crate::auth::JwtSecret>,
     token:                 String,
     tracking_enabled:      Option<bool>,
     flush_interval_sec:    Option<i64>,
     notifications_enabled: Option<bool>,
     theme:                 Option<String>,
 ) -> Result<Settings, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
     // Read current, apply patches
@@ -186,11 +188,12 @@ pub fn set_autostart(enabled: bool) -> Result<(), String> {
 #[tauri::command]
 pub async fn update_profile(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
     name:  String,
     email: String,
 ) -> Result<UserInfo, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let email   = email.trim().to_lowercase();
     let name    = name.trim().to_string();
 
@@ -216,17 +219,18 @@ pub async fn update_profile(
     )
     .map_err(|e| e.to_string())?;
 
-    Ok(UserInfo { id: user_id, name, email })
+    Ok(UserInfo { id: user_id.into(), name, email })
 }
 
 #[tauri::command]
 pub async fn change_password(
     state:            tauri::State<'_, DbPath>,
+    jwt:              tauri::State<'_, crate::auth::JwtSecret>,
     token:            String,
     current_password: String,
     new_password:     String,
 ) -> Result<(), String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
     // Fetch current hash
@@ -268,9 +272,10 @@ pub struct Overview {
 #[tauri::command]
 pub async fn get_overview(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
 ) -> Result<Overview, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
     // Sessions today
@@ -383,9 +388,10 @@ pub struct RecommendationResponse {
 #[tauri::command]
 pub async fn get_recommendation(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
 ) -> Result<RecommendationResponse, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
     // Get the last 10 predictions for context
@@ -458,9 +464,10 @@ pub async fn get_recommendation(
 #[tauri::command]
 pub async fn export_csv(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
 ) -> Result<String, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
@@ -528,13 +535,14 @@ pub struct HistoryResponse {
 #[tauri::command]
 pub async fn get_history(
     state:     tauri::State<'_, DbPath>,
+    jwt:       tauri::State<'_, crate::auth::JwtSecret>,
     token:     String,
     page:      Option<i64>,
     per_page:  Option<i64>,
     from_date: Option<String>,
     to_date:   Option<String>,
 ) -> Result<HistoryResponse, String> {
-    let user_id  = decode_access_token(&token)?;
+    let user_id  = decode_access_token(&token, &jwt.0)?;
     let page     = page.unwrap_or(1).max(1);
     let per_page = per_page.unwrap_or(10).clamp(1, 100);
     let offset   = (page - 1) * per_page;
@@ -658,11 +666,12 @@ pub struct TrendsResponse {
 #[tauri::command]
 pub async fn get_analytics_trends(
     state:  tauri::State<'_, DbPath>,
+    jwt:    tauri::State<'_, crate::auth::JwtSecret>,
     token:  String,
     hours:  Option<i64>,
     limit:  Option<i64>,
 ) -> Result<TrendsResponse, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let hours   = hours.unwrap_or(24);
     let limit   = limit.unwrap_or(500).clamp(1, 2000);
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
@@ -723,9 +732,10 @@ const FEATURE_COLS: &[&str] = &[
 #[tauri::command]
 pub async fn get_analytics_features(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
 ) -> Result<FeaturesResponse, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
     let total: i64 = conn
@@ -790,10 +800,11 @@ pub struct DailyResponse {
 #[tauri::command]
 pub async fn get_daily_reports(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
     days:  Option<i64>,
 ) -> Result<DailyResponse, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let days    = days.unwrap_or(14).clamp(1, 90);
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
@@ -887,10 +898,11 @@ pub struct WeeklyResponse {
 #[tauri::command]
 pub async fn get_weekly_reports(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
     weeks: Option<i64>,
 ) -> Result<WeeklyResponse, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let weeks   = weeks.unwrap_or(8).clamp(1, 52);
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
     let days    = weeks * 7;

@@ -9,6 +9,7 @@ mod session;
 mod settings;
 
 use db::DbPath;
+use auth::JwtSecret;
 use tauri::Manager;
 
 fn main() {
@@ -21,39 +22,82 @@ fn main() {
                 .expect("failed to get app data dir");
             std::fs::create_dir_all(&data_dir).expect("cannot create data dir");
 
+            // ── Read SECRET_KEY from the backend's .env ───────────────────────
+            //
+            // The FastAPI backend reads its .env from the backend/ directory
+            // (or from COGNILOAD_ENV_FILE for the packaged .exe).
+            // We read the same file so JWT tokens issued by the backend can be
+            // validated locally in session/behavior/predict/settings commands.
+            //
+            // Search order:
+            //   1. COGNILOAD_ENV_FILE env var (set by the packaged .exe launcher)
+            //   2. <exe_dir>/backend/.env       (dev: cargo tauri dev)
+            //   3. <exe_dir>/../backend/.env    (alt dev layout)
+            //   4. Fall back to the default dev secret
+            let default_secret = "dev-secret-change-me".to_string();
+            let jwt_secret = {
+                let mut secret = default_secret.clone();
+
+                let env_file = std::env::var("COGNILOAD_ENV_FILE").ok();
+                let exe_dir  = std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+
+                let candidates: Vec<std::path::PathBuf> = {
+                    let mut v = Vec::new();
+                    if let Some(ref f) = env_file {
+                        v.push(std::path::PathBuf::from(f));
+                    }
+                    if let Some(ref dir) = exe_dir {
+                        v.push(dir.join("backend").join(".env"));
+                        v.push(dir.join("..").join("backend").join(".env"));
+                    }
+                    v
+                };
+
+                for path in candidates {
+                    if path.exists() {
+                        if let Ok(contents) = std::fs::read_to_string(&path) {
+                            for line in contents.lines() {
+                                let line = line.trim();
+                                if line.starts_with("SECRET_KEY=") {
+                                    let val = line["SECRET_KEY=".len()..].trim().trim_matches('"');
+                                    if !val.is_empty() {
+                                        secret = val.to_string();
+                                        println!("[setup] JWT secret loaded from {}", path.display());
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+
+                if secret == default_secret {
+                    eprintln!(
+                        "[setup] WARNING: Using default JWT secret. \
+                         Create backend/.env with SECRET_KEY= to match the backend."
+                    );
+                }
+                secret
+            };
+
             // ── Copy ML assets → app data dir ────────────────────────────────
-            //
-            // Search order for each asset:
-            //   1. <exe_dir>/resources/<asset>   ← dev: put files here manually
-            //   2. <exe_dir>/<asset>             ← portable layout
-            //   3. <bundle resource_dir>/<asset> ← packaged .exe (tauri.release.conf.json)
-            //
-            // resource_dir() is the correct Tauri 2 API (resolve_resource does
-            // not exist on PathResolver in this version).
-            //
-            // Only copies when destination doesn't exist so a manually placed
-            // model upgrade is never overwritten on relaunch.
             let exe_dir = std::env::current_exe()
                 .ok()
                 .and_then(|p| p.parent().map(|d| d.to_path_buf()));
-
             let resource_dir = app.path().resource_dir().ok();
 
             for asset in &["model.onnx", "scaler_params.json", "onnxruntime.dll"] {
                 let dst = data_dir.join(asset);
-                if dst.exists() {
-                    continue;
-                }
+                if dst.exists() { continue; }
 
                 let mut candidates: Vec<std::path::PathBuf> = Vec::new();
-
-                // 1. <exe_dir>/resources/<asset>  (dev layout)
                 if let Some(ref dir) = exe_dir {
                     candidates.push(dir.join("resources").join(asset));
-                    // 2. <exe_dir>/<asset>  (portable)
                     candidates.push(dir.join(asset));
                 }
-                // 3. Tauri bundle resource dir (packaged .exe)
                 if let Some(ref rdir) = resource_dir {
                     candidates.push(rdir.join("resources").join(asset));
                     candidates.push(rdir.join(asset));
@@ -66,9 +110,6 @@ fn main() {
                         println!("[setup] copied {asset} → {}", dst.display());
                     }
                     None => {
-                        // Not fatal — predict.rs returns a clear error to the
-                        // frontend on first prediction attempt.
-                        // For dev: place files at src-tauri/resources/<asset>
                         eprintln!(
                             "[setup] WARNING: {asset} not found. \
                              For dev, place it at: src-tauri/resources/{asset}"
@@ -82,6 +123,7 @@ fn main() {
             let db_path_str = db_path.to_string_lossy().to_string();
             db::init_db(&db_path_str).expect("DB init failed");
             app.manage(DbPath(db_path_str));
+            app.manage(JwtSecret(jwt_secret));
 
             // ── Start native input collector thread ──────────────────────────
             let handle = app.handle().clone();
@@ -92,7 +134,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            // Auth
+            // Auth — proxies to FastAPI backend (shared account with web app)
             auth::register,
             auth::login,
             auth::logout,

@@ -26,7 +26,7 @@ use std::sync::OnceLock;
 use tokio::sync::Mutex;           // ← async-aware mutex; was std::sync::Mutex
 use tauri::Manager;
 
-use crate::auth::decode_access_token;
+use crate::auth::{decode_access_token, JwtSecret};
 use crate::behavior::BehaviorPayload;
 use crate::db::{open, DbPath};
 
@@ -159,12 +159,13 @@ pub struct Prediction {
 pub async fn predict_load(
     app:         tauri::AppHandle,
     state:       tauri::State<'_, DbPath>,
+    jwt:         tauri::State<'_, JwtSecret>,
     token:       String,
     session_id:  i64,
     behavior_id: Option<i64>,
     payload:     BehaviorPayload,
 ) -> Result<Prediction, String> {
-    decode_access_token(&token)?;
+    decode_access_token(&token, &jwt.0)?;
 
     let (load_level, confidence, scores) = run_inference(&app, &payload).await?;
 
@@ -194,11 +195,12 @@ pub async fn predict_load(
 #[tauri::command]
 pub async fn get_predictions(
     state:      tauri::State<'_, DbPath>,
+    jwt:        tauri::State<'_, JwtSecret>,
     token:      String,
     session_id: i64,
     limit:      Option<i64>,
 ) -> Result<Vec<Prediction>, String> {
-    decode_access_token(&token)?;
+    decode_access_token(&token, &jwt.0)?;
     let conn  = open(&state.0).map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(50);
 

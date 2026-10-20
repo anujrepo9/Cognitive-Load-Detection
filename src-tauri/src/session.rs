@@ -9,7 +9,7 @@
 use rusqlite::params;
 use serde::Serialize;
 
-use crate::auth::decode_access_token;
+use crate::auth::{decode_access_token, JwtSecret};
 use crate::db::{open, DbPath};
 
 #[derive(Serialize, Clone)]
@@ -25,9 +25,10 @@ pub struct Session {
 #[tauri::command]
 pub async fn start_session(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
 ) -> Result<Session, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
     conn.execute(
@@ -51,10 +52,11 @@ pub async fn start_session(
 #[tauri::command]
 pub async fn end_session(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
     session_id: i64,
 ) -> Result<Session, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
     let rows = conn
@@ -82,9 +84,10 @@ pub async fn end_session(
 #[tauri::command]
 pub async fn get_sessions(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
 ) -> Result<Vec<Session>, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
@@ -106,10 +109,11 @@ pub async fn get_sessions(
 #[tauri::command]
 pub async fn get_session(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
     session_id: i64,
 ) -> Result<Session, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
@@ -131,9 +135,10 @@ pub async fn get_session(
 #[tauri::command]
 pub async fn get_current_session(
     state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
     token: String,
 ) -> Result<Option<Session>, String> {
-    let user_id = decode_access_token(&token)?;
+    let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
@@ -159,9 +164,10 @@ pub async fn get_current_session(
 #[tauri::command]
 pub async fn pause_session(
     _state: tauri::State<'_, DbPath>,
+    jwt:    tauri::State<'_, JwtSecret>,
     token: String,
 ) -> Result<(), String> {
-    decode_access_token(&token)?;
+    decode_access_token(&token, &jwt.0)?;
     Ok(())
 }
 
@@ -169,9 +175,10 @@ pub async fn pause_session(
 #[tauri::command]
 pub async fn resume_session(
     _state: tauri::State<'_, DbPath>,
+    jwt:    tauri::State<'_, JwtSecret>,
     token: String,
 ) -> Result<(), String> {
-    decode_access_token(&token)?;
+    decode_access_token(&token, &jwt.0)?;
     Ok(())
 }
 

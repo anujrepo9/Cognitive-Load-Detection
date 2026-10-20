@@ -11,7 +11,7 @@
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use crate::auth::decode_access_token;
+use crate::auth::{decode_access_token, JwtSecret};
 use crate::collector::CollectorState;
 use crate::db::{open, DbPath};
 
@@ -59,10 +59,11 @@ pub struct BehaviorRecord {
 pub async fn flush_behavior(
     state:     tauri::State<'_, DbPath>,
     collector: tauri::State<'_, CollectorState>,
+    jwt:       tauri::State<'_, JwtSecret>,
     token:     String,
     session_id: i64,
 ) -> Result<BehaviorRecord, String> {
-    decode_access_token(&token)?; // auth check
+    decode_access_token(&token, &jwt.0)?; // auth check
 
     // Drain and compute metrics from the in-memory collector state
     let (payload, raw_key_presses, raw_mouse_clicks) = collector.drain_and_compute();
@@ -124,11 +125,12 @@ pub async fn flush_behavior(
 #[tauri::command]
 pub async fn get_behavior_history(
     state:      tauri::State<'_, DbPath>,
+    jwt:        tauri::State<'_, JwtSecret>,
     token:      String,
     session_id: i64,
     limit:      Option<i64>,
 ) -> Result<Vec<BehaviorRecord>, String> {
-    decode_access_token(&token)?;
+    decode_access_token(&token, &jwt.0)?;
     let conn  = open(&state.0).map_err(|e| e.to_string())?;
     let limit = limit.unwrap_or(50);
 

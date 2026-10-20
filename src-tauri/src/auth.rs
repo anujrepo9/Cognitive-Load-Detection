@@ -1,316 +1,213 @@
 // auth.rs — Authentication commands
 //
-// Commands exposed to the frontend:
+// Auth commands (login/register/logout/refresh) proxy to the FastAPI backend
+// over HTTP so the same account works in both the web app and Tauri desktop.
+//
+// Local commands (session, behavior, predict, settings) validate the JWT
+// locally using the same SECRET_KEY the backend uses, read from .env at
+// startup and stored as JwtSecret managed state.
+//
+// Commands:
 //   register(name, email, password)  → AuthResponse
 //   login(email, password)           → AuthResponse
-//   logout(token)                    → ()
+//   logout(refresh_token)            → ()
 //   refresh_token(refresh_token)     → AuthResponse
 //   get_current_user(token)          → UserInfo
 
-use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
-use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
-use bcrypt::{hash, verify, DEFAULT_COST};
-use rusqlite::params;
-use sha2::{Sha256, Digest};
+use reqwest::Client;
+use jsonwebtoken::{decode, DecodingKey, Validation};
 
-use crate::db::{DbPath, open, get_user_by_email, get_user_by_id};
+const BACKEND: &str = "http://127.0.0.1:8000/api";
 
-// ── JWT secret — in production this should come from a stored key ──────────
-// For a local desktop app this is acceptable; the DB is already local.
-const JWT_SECRET: &str = "cogniload-desktop-secret-change-in-prod";
-const ACCESS_TOKEN_EXPIRY_SECS:  u64 = 60 * 60;        // 1 hour
-const REFRESH_TOKEN_EXPIRY_SECS: u64 = 60 * 60 * 24 * 7; // 7 days
+// ── Managed state: JWT secret shared with the FastAPI backend ─────────────────
+pub struct JwtSecret(pub String);
 
-// ── JWT Claims ─────────────────────────────────────────────────────────────
-#[derive(Debug, Serialize, Deserialize)]
-struct Claims {
-    sub: String,   // user id as string
-    exp: u64,
-    iat: u64,
-    kind: String,  // "access" | "refresh"
+// ── Public types ──────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct UserInfo {
+    pub id:    serde_json::Value,
+    pub name:  String,
+    pub email: String,
 }
 
-// ── Public response types (sent to frontend) ───────────────────────────────
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct AuthResponse {
     pub access_token:  String,
     pub refresh_token: String,
     pub user:          UserInfo,
 }
 
-#[derive(Serialize, Clone)]
-pub struct UserInfo {
-    pub id:    i64,
-    pub name:  String,
-    pub email: String,
+// ── Internal shapes from FastAPI ──────────────────────────────────────────────
+
+#[derive(Deserialize, Debug)]
+struct BackendTokenResponse {
+    access_token:  String,
+    refresh_token: String,
+    user:          UserInfo,
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
+#[derive(Deserialize, Debug)]
+struct BackendRefreshResponse {
+    access_token:  String,
+    refresh_token: String,
 }
 
-fn make_access_token(user_id: i64) -> Result<String, String> {
-    let now = now_secs();
-    let claims = Claims {
-        sub:  user_id.to_string(),
-        iat:  now,
-        exp:  now + ACCESS_TOKEN_EXPIRY_SECS,
-        kind: "access".into(),
-    };
-    encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(JWT_SECRET.as_bytes()),
-    )
-    .map_err(|e| e.to_string())
+#[derive(Deserialize, Debug)]
+struct BackendError {
+    detail: serde_json::Value,
 }
 
-fn make_refresh_token(user_id: i64) -> Result<String, String> {
-    let now = now_secs();
-    let claims = Claims {
-        sub:  user_id.to_string(),
-        iat:  now,
-        exp:  now + REFRESH_TOKEN_EXPIRY_SECS,
-        kind: "refresh".into(),
-    };
-    encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(JWT_SECRET.as_bytes()),
-    )
-    .map_err(|e| e.to_string())
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    sub: String,
+    exp: u64,
+    iat: Option<u64>,
 }
 
-fn sha256_hex(s: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(s.as_bytes());
-    format!("{:x}", hasher.finalize())
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async fn extract_error(res: reqwest::Response) -> String {
+    let status = res.status().as_u16();
+    let text = res.text().await.unwrap_or_default();
+    if let Ok(e) = serde_json::from_str::<BackendError>(&text) {
+        return match e.detail {
+            serde_json::Value::String(s) => s,
+            other => other.to_string(),
+        };
+    }
+    format!("HTTP {status}: {text}")
 }
 
-pub fn decode_access_token(token: &str) -> Result<i64, String> {
-    let mut validation = Validation::default();
-    validation.validate_exp = true;
+/// Decode a FastAPI-issued JWT locally using the shared secret.
+/// Called by session.rs, behavior.rs, predict.rs, settings.rs.
+pub fn decode_access_token(token: &str, secret: &str) -> Result<i64, String> {
+    let mut v = Validation::new(jsonwebtoken::Algorithm::HS256);
+    v.validate_exp = true;
 
     let data = decode::<Claims>(
         token,
-        &DecodingKey::from_secret(JWT_SECRET.as_bytes()),
-        &validation,
+        &DecodingKey::from_secret(secret.as_bytes()),
+        &v,
     )
     .map_err(|e| format!("Invalid token: {e}"))?;
-
-    if data.claims.kind != "access" {
-        return Err("Not an access token".into());
-    }
 
     data.claims.sub.parse::<i64>().map_err(|e| e.to_string())
 }
 
-fn store_refresh_token(
-    db_path: &str,
-    user_id: i64,
-    refresh_token: &str,
-    expiry_secs: u64,
-) -> Result<(), String> {
-    let conn = open(db_path).map_err(|e| e.to_string())?;
-    let hash = sha256_hex(refresh_token);
-    let expires_at = chrono::Utc::now()
-        + chrono::Duration::seconds(expiry_secs as i64);
-    conn.execute(
-        "INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-         VALUES (?1, ?2, ?3)",
-        params![user_id, hash, expires_at.to_rfc3339()],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-// ── Commands ───────────────────────────────────────────────────────────────
+// ── Commands ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub async fn register(
-    state: tauri::State<'_, DbPath>,
-    name: String,
-    email: String,
+    name:     String,
+    email:    String,
     password: String,
 ) -> Result<AuthResponse, String> {
-    let db_path = &state.0;
-    let email = email.trim().to_lowercase();
-    let conn = open(db_path).map_err(|e| e.to_string())?;
+    let res = Client::new()
+        .post(format!("{BACKEND}/auth/register"))
+        .json(&serde_json::json!({ "name": name, "email": email, "password": password }))
+        .send()
+        .await
+        .map_err(|e| format!("Backend unreachable: {e}"))?;
 
-    // Check email not already taken
-    if get_user_by_email(&conn, &email)
-        .map_err(|e| e.to_string())?
-        .is_some()
-    {
-        return Err("Email already registered".into());
+    if res.status().is_success() {
+        let b: BackendTokenResponse = res.json().await.map_err(|e| e.to_string())?;
+        Ok(AuthResponse { access_token: b.access_token, refresh_token: b.refresh_token, user: b.user })
+    } else {
+        Err(extract_error(res).await)
     }
-
-    let password_hash = hash(&password, DEFAULT_COST).map_err(|e| e.to_string())?;
-
-    conn.execute(
-        "INSERT INTO users (name, email, password) VALUES (?1, ?2, ?3)",
-        params![name, email, password_hash],
-    )
-    .map_err(|e| e.to_string())?;
-
-    let user_id = conn.last_insert_rowid();
-
-    // Create default settings row
-    conn.execute(
-        "INSERT OR IGNORE INTO user_settings (user_id) VALUES (?1)",
-        params![user_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    let access  = make_access_token(user_id)?;
-    let refresh = make_refresh_token(user_id)?;
-    store_refresh_token(db_path, user_id, &refresh, REFRESH_TOKEN_EXPIRY_SECS)?;
-
-    Ok(AuthResponse {
-        access_token:  access,
-        refresh_token: refresh,
-        user: UserInfo { id: user_id, name, email },
-    })
 }
 
 #[tauri::command]
 pub async fn login(
-    state: tauri::State<'_, DbPath>,
-    email: String,
+    email:    String,
     password: String,
 ) -> Result<AuthResponse, String> {
-    let db_path = &state.0;
-    let email = email.trim().to_lowercase();
-    let conn = open(db_path).map_err(|e| e.to_string())?;
+    let res = Client::new()
+        .post(format!("{BACKEND}/auth/signin"))
+        .json(&serde_json::json!({ "email": email, "password": password }))
+        .send()
+        .await
+        .map_err(|e| format!("Backend unreachable: {e}"))?;
 
-    let (id, name, email_stored, pw_hash, is_active) =
-        get_user_by_email(&conn, &email)
-            .map_err(|e| e.to_string())?
-            .ok_or("Invalid email or password")?;
-
-    if !is_active {
-        return Err("Account disabled".into());
+    if res.status().is_success() {
+        let b: BackendTokenResponse = res.json().await.map_err(|e| e.to_string())?;
+        Ok(AuthResponse { access_token: b.access_token, refresh_token: b.refresh_token, user: b.user })
+    } else {
+        Err(extract_error(res).await)
     }
-
-    let valid = verify(&password, &pw_hash).map_err(|e| e.to_string())?;
-    if !valid {
-        return Err("Invalid email or password".into());
-    }
-
-    // Revoke all existing active refresh tokens for this user (single-session policy).
-    // Without this, old tokens accumulate and the frontend may re-use a stale one
-    // from a previous session, causing silent auth failures on next app launch.
-    conn.execute(
-        "UPDATE refresh_tokens SET revoked = 1, revoked_at = datetime('now')
-         WHERE user_id = ?1 AND revoked = 0",
-        params![id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    let access  = make_access_token(id)?;
-    let refresh = make_refresh_token(id)?;
-    store_refresh_token(db_path, id, &refresh, REFRESH_TOKEN_EXPIRY_SECS)?;
-
-    Ok(AuthResponse {
-        access_token:  access,
-        refresh_token: refresh,
-        user: UserInfo { id, name, email: email_stored },
-    })
 }
 
 #[tauri::command]
 pub async fn logout(
-    state: tauri::State<'_, DbPath>,
     refresh_token: String,
 ) -> Result<(), String> {
-    let conn = open(&state.0).map_err(|e| e.to_string())?;
-    let hash = sha256_hex(&refresh_token);
-    conn.execute(
-        "UPDATE refresh_tokens SET revoked = 1, revoked_at = datetime('now')
-         WHERE token_hash = ?1",
-        params![hash],
-    )
-    .map_err(|e| e.to_string())?;
+    // Fire-and-forget — ignore network errors on logout
+    let _ = Client::new()
+        .post(format!("{BACKEND}/auth/logout"))
+        .json(&serde_json::json!({ "refresh_token": refresh_token }))
+        .send()
+        .await;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn refresh_token(
-    state: tauri::State<'_, DbPath>,
+    state:         tauri::State<'_, JwtSecret>,
     refresh_token: String,
 ) -> Result<AuthResponse, String> {
-    let db_path = &state.0;
-    let conn = open(db_path).map_err(|e| e.to_string())?;
+    let res = Client::new()
+        .post(format!("{BACKEND}/auth/refresh"))
+        .json(&serde_json::json!({ "refresh_token": refresh_token }))
+        .send()
+        .await
+        .map_err(|e| format!("Backend unreachable: {e}"))?;
 
-    // Validate JWT
-    let mut validation = Validation::default();
-    validation.validate_exp = true;
-    let data = decode::<Claims>(
-        &refresh_token,
-        &DecodingKey::from_secret(JWT_SECRET.as_bytes()),
-        &validation,
-    )
-    .map_err(|e| format!("Invalid refresh token: {e}"))?;
-
-    if data.claims.kind != "refresh" {
-        return Err("Not a refresh token".into());
+    if !res.status().is_success() {
+        return Err(extract_error(res).await);
     }
 
-    let user_id: i64 = data.claims.sub.parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
+    let b: BackendRefreshResponse = res.json().await.map_err(|e| e.to_string())?;
 
-    // Check token not revoked
-    let hash = sha256_hex(&refresh_token);
-    let mut stmt = conn
-        .prepare("SELECT revoked FROM refresh_tokens WHERE token_hash = ?1 LIMIT 1")
-        .map_err(|e| e.to_string())?;
-    let revoked: bool = stmt
-        .query_row(params![hash], |row| row.get::<_, i64>(0))
-        .map(|v| v == 1)
-        .unwrap_or(true); // treat missing as revoked
+    // Decode locally to get user_id, then fetch profile
+    let user_id = decode_access_token(&b.access_token, &state.0)?;
 
-    if revoked {
-        return Err("Refresh token revoked or not found".into());
-    }
+    let profile_res = Client::new()
+        .get(format!("{BACKEND}/auth/profile"))
+        .header("Authorization", format!("Bearer {}", b.access_token))
+        .send()
+        .await
+        .map_err(|e| format!("Backend unreachable: {e}"))?;
 
-    // Revoke old token
-    conn.execute(
-        "UPDATE refresh_tokens SET revoked = 1, revoked_at = datetime('now')
-         WHERE token_hash = ?1",
-        params![hash],
-    )
-    .map_err(|e| e.to_string())?;
+    let user: UserInfo = if profile_res.status().is_success() {
+        profile_res.json().await.map_err(|e| e.to_string())?
+    } else {
+        // Fallback: construct minimal UserInfo from token
+        UserInfo {
+            id:    serde_json::Value::Number(user_id.into()),
+            name:  String::new(),
+            email: String::new(),
+        }
+    };
 
-    // Issue new tokens
-    let (_, name, email, _) = get_user_by_id(&conn, user_id)
-        .map_err(|e| e.to_string())?
-        .ok_or("User not found")?;
-
-    let access  = make_access_token(user_id)?;
-    let new_ref = make_refresh_token(user_id)?;
-    store_refresh_token(db_path, user_id, &new_ref, REFRESH_TOKEN_EXPIRY_SECS)?;
-
-    Ok(AuthResponse {
-        access_token:  access,
-        refresh_token: new_ref,
-        user: UserInfo { id: user_id, name, email },
-    })
+    Ok(AuthResponse { access_token: b.access_token, refresh_token: b.refresh_token, user })
 }
 
 #[tauri::command]
 pub async fn get_current_user(
-    state: tauri::State<'_, DbPath>,
     token: String,
 ) -> Result<UserInfo, String> {
-    let user_id = decode_access_token(&token)?;
-    let conn = open(&state.0).map_err(|e| e.to_string())?;
-    let (id, name, email, _) = get_user_by_id(&conn, user_id)
-        .map_err(|e| e.to_string())?
-        .ok_or("User not found")?;
-    Ok(UserInfo { id, name, email })
+    let res = Client::new()
+        .get(format!("{BACKEND}/auth/profile"))
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| format!("Backend unreachable: {e}"))?;
+
+    if res.status().is_success() {
+        res.json::<UserInfo>().await.map_err(|e| e.to_string())
+    } else {
+        Err(extract_error(res).await)
+    }
 }
