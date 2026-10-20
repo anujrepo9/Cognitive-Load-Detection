@@ -7,9 +7,11 @@ import { Tabs, TabPanel } from "../components/ui/Tabs"
 import { PageHeader } from "../components/ui/PageHeader"
 import LoadBadge from "../components/ui/LoadBadge"
 
+/* Refined helper components — same data, polished presentation. */
 function DateLabel({ date, prefix = "" }) {
   return (
-    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+    <span className="text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]
+      tracking-[-0.005em]">
       {prefix}{date}
     </span>
   )
@@ -17,25 +19,38 @@ function DateLabel({ date, prefix = "" }) {
 
 function StatPill({ label, value }) {
   return (
-    <span className="text-sm text-gray-500 dark:text-gray-400">
-      <strong className="text-gray-800 dark:text-gray-200">{value}</strong>{" "}{label}
+    <span className="text-[12px] text-[#86868b] dark:text-[#a1a1a6]">
+      <strong className="font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] nums">{value}</strong>
+      {" "}{label}
+    </span>
+  )
+}
+
+function LoadShare({ k, v }) {
+  return (
+    <span className="text-[11px] text-[#86868b] dark:text-[#a1a1a6] nums capitalize">
+      {k}: {(v * 100).toFixed(0)}%
     </span>
   )
 }
 
 function DailyTab({ days }) {
   if (!days.length) return (
-    <p className="text-sm text-gray-400 text-center py-12">
-      No daily data yet. Complete some tracking sessions first.
-    </p>
+    <div className="text-center py-16">
+      <p className="text-[13px] text-[#86868b] dark:text-[#a1a1a6]">
+        No daily data yet. Complete some tracking sessions first.
+      </p>
+    </div>
   )
   return (
     <div className="space-y-3" role="list" aria-label="Daily report entries">
       {days.map((d) => (
         <motion.div key={d.date}
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
           role="listitem"
-          className="card p-4 flex flex-wrap items-center gap-4">
+          className="card p-4 flex flex-wrap items-center gap-4 hover:border-indigo-200/70
+            dark:hover:border-indigo-500/25 transition-colors">
           <DateLabel date={d.date} />
           <div className="flex gap-4 flex-1 flex-wrap">
             <StatPill label="sessions"    value={d.sessions} />
@@ -43,9 +58,9 @@ function DailyTab({ days }) {
             <StatPill label="avg WPM"     value={d.avg_wpm} />
           </div>
           {d.dominant_load && <LoadBadge level={d.dominant_load} />}
-          <div className="flex gap-3 text-xs text-gray-400" aria-label="Load distribution">
+          <div className="flex gap-3" aria-label="Load distribution">
             {Object.entries(d.load_distribution).map(([k, v]) => (
-              <span key={k}>{k}: {(v * 100).toFixed(0)}%</span>
+              <LoadShare key={k} k={k} v={v} />
             ))}
           </div>
         </motion.div>
@@ -56,17 +71,21 @@ function DailyTab({ days }) {
 
 function WeeklyTab({ weeks }) {
   if (!weeks.length) return (
-    <p className="text-sm text-gray-400 text-center py-12">
-      No weekly data yet. Complete sessions across multiple days to see weekly summaries.
-    </p>
+    <div className="text-center py-16">
+      <p className="text-[13px] text-[#86868b] dark:text-[#a1a1a6]">
+        No weekly data yet. Complete sessions across multiple days to see weekly summaries.
+      </p>
+    </div>
   )
   return (
     <div className="space-y-3" role="list" aria-label="Weekly report entries">
       {weeks.map((w) => (
         <motion.div key={w.week_start}
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
           role="listitem"
-          className="card p-4 flex flex-wrap items-center gap-4">
+          className="card p-4 flex flex-wrap items-center gap-4 hover:border-indigo-200/70
+            dark:hover:border-indigo-500/25 transition-colors">
           <DateLabel date={w.week_start} prefix="Week of " />
           <div className="flex gap-4 flex-1 flex-wrap">
             <StatPill label="sessions"    value={w.sessions} />
@@ -74,9 +93,9 @@ function WeeklyTab({ weeks }) {
             <StatPill label="avg WPM"     value={w.avg_wpm} />
           </div>
           {w.dominant_load && <LoadBadge level={w.dominant_load} />}
-          <div className="flex gap-3 text-xs text-gray-400" aria-label="Load distribution">
+          <div className="flex gap-3" aria-label="Load distribution">
             {Object.entries(w.load_distribution).map(([k, v]) => (
-              <span key={k}>{k}: {(v * 100).toFixed(0)}%</span>
+              <LoadShare key={k} k={k} v={v} />
             ))}
           </div>
         </motion.div>
@@ -91,13 +110,13 @@ const TABS = [
 ]
 
 export default function Reports() {
-  const [tab,      setTab]      = useState("daily")
-  const [daily,    setDaily]    = useState([])
-  const [weekly,   setWeekly]   = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [error,    setError]    = useState(null)
-  const [exporting,setExporting]= useState(false)
-  const [exportErr,setExportErr]= useState(null)
+  const [tab,       setTab]       = useState("daily")
+  const [daily,     setDaily]     = useState([])
+  const [weekly,    setWeekly]    = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportErr, setExportErr] = useState(null)
 
   useAuthFetch(() => {
     setLoading(true)
@@ -124,27 +143,39 @@ export default function Reports() {
     }
   }
 
+  // Build the Export CSV button + error as a single actions node — passed
+  // through the `actions` prop so PageHeader actually renders it. (Passing
+  // it as children was silently dropped by PageHeader.)
+  const exportActions = (
+    <div className="flex flex-col items-end gap-1.5">
+      <button
+        onClick={handleExport}
+        disabled={exporting}
+        aria-disabled={exporting}
+        className="btn-primary text-[13px] py-1.5">
+        {exporting
+          ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Exporting…</>
+          : <><Download className="w-3.5 h-3.5" /> Export CSV</>}
+      </button>
+      {exportErr && (
+        <p className="text-[11px] text-red-600 dark:text-red-400">{exportErr}</p>
+      )}
+    </div>
+  )
+
   return (
     <div className="p-4 lg:p-6 space-y-6">
       <PageHeader
         title="Reports"
-        subtitle="Aggregated daily and weekly cognitive performance summaries"
-      >
-        <div className="flex flex-col items-end gap-1">
-          <button onClick={handleExport} disabled={exporting} className="btn-primary"
-            aria-disabled={exporting}>
-            {exporting
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> Exporting…</>
-              : <><Download className="w-4 h-4" /> Export CSV</>}
-          </button>
-          {exportErr && <p className="text-xs text-red-500">{exportErr}</p>}
-        </div>
-      </PageHeader>
+        description="Aggregated daily and weekly cognitive performance summaries"
+        actions={exportActions}
+      />
 
       {error && (
-        <div role="alert" className="rounded-xl bg-red-50 dark:bg-red-900/20
-          border border-red-200 dark:border-red-800 px-4 py-3 text-sm
-          text-red-600 dark:text-red-400 flex gap-2 items-center">
+        <div role="alert"
+          className="rounded-xl border border-red-200/70 dark:border-red-500/25
+            bg-red-50/70 dark:bg-red-500/10 px-4 py-3 text-[13px]
+            text-red-700 dark:text-red-300 flex gap-2 items-center">
           <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" /> {error}
         </div>
       )}
@@ -153,7 +184,7 @@ export default function Reports() {
 
       {loading ? (
         <div className="flex justify-center py-16" aria-live="polite" aria-label="Loading reports">
-          <Loader2 className="w-6 h-6 animate-spin text-accent" />
+          <Loader2 className="w-6 h-6 animate-spin text-indigo-500 dark:text-indigo-300" />
         </div>
       ) : (
         <>

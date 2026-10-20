@@ -24,7 +24,12 @@ function ProtectedLayout() {
 
   return (
     <TrackingProvider>
-      <div className="flex min-h-screen bg-gray-50 dark:bg-[#080b14]">
+      {/* Canvas background is set on <body> via index.css — no need for an
+       * explicit bg-* utility here. Keeping the surface transparent lets the
+       * refined radial-gradient on body show through, which is part of the
+       * new design language. Works the same in browser (Vite dev server,
+       * uvicorn-served build) and Tauri webview. */}
+      <div className="flex min-h-screen">
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <TopNav />

@@ -23,16 +23,31 @@ function formatDuration(seconds) {
 }
 
 const STATUS_UI = {
-  native:       { icon: Wifi,      color: "text-success", label: "Native",         bg: "bg-success/10" },
-  connected:    { icon: Wifi,      color: "text-success", label: "Live",          bg: "bg-success/10" },
-  connecting:   { icon: Wifi,      color: "text-warning", label: "Connecting…",   bg: "bg-warning/10" },
-  reconnecting: { icon: RotateCcw, color: "text-warning", label: "Reconnecting",  bg: "bg-warning/10" },
-  offline:      { icon: WifiOff,   color: "text-danger",  label: "Offline",       bg: "bg-danger/10"  },
+  native:       { icon: Wifi,      color: "text-emerald-700 dark:text-emerald-300",  label: "Native",         bg: "bg-emerald-50/80 dark:bg-emerald-500/12" },
+  connected:    { icon: Wifi,      color: "text-emerald-700 dark:text-emerald-300",  label: "Live",          bg: "bg-emerald-50/80 dark:bg-emerald-500/12" },
+  connecting:   { icon: Wifi,      color: "text-amber-700 dark:text-amber-300",     label: "Connecting…",   bg: "bg-amber-50/80 dark:bg-amber-500/12" },
+  reconnecting: { icon: RotateCcw, color: "text-amber-700 dark:text-amber-300",     label: "Reconnecting",  bg: "bg-amber-50/80 dark:bg-amber-500/12" },
+  offline:      { icon: WifiOff,   color: "text-red-700 dark:text-red-300",         label: "Offline",       bg: "bg-red-50/80 dark:bg-red-500/12"  },
 }
 
+// Refined tooltip — uses CSS variables so light/dark auto-adapt.
 const tooltipStyle = {
-  background: "#fff", border: "1px solid #E2E8F0",
-  borderRadius: 12, fontSize: 12, color: "#0F172A",
+  background: "rgba(255,255,255,0.85)",
+  border: "1px solid rgba(255,255,255,0.6)",
+  borderRadius: 12,
+  fontSize: 12,
+  color: "#1d1d1f",
+  boxShadow: "0 8px 24px rgba(0,0,0,0.10), 0 0 0 0.5px rgba(0,0,0,0.04)",
+  backdropFilter: "blur(20px) saturate(180%)",
+  WebkitBackdropFilter: "blur(20px) saturate(180%)",
+  padding: "8px 12px",
+}
+const tooltipStyleDark = {
+  ...tooltipStyle,
+  background: "rgba(28,28,32,0.85)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  color: "#f5f5f7",
+  boxShadow: "0 8px 24px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.04)",
 }
 
 export default function LiveMonitoring() {
@@ -45,28 +60,24 @@ export default function LiveMonitoring() {
   const [confidence,  setConfidence]  = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [elapsed,     setElapsed]     = useState(0)
-  // Track the most recently seen WPM so the stat card shows a live value
   const [latestWpm,   setLatestWpm]   = useState(null)
-  // Cumulative key count across all flush intervals this session
   const [totalKeys,   setTotalKeys]   = useState(0)
+
+  // Use documentElement classList to detect dark mode for tooltip styling
+  const [isDark, setIsDark] = useState(
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+  )
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains("dark"))
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] })
+    return () => observer.disconnect()
+  }, [])
 
   const prevKeyEvents = useRef(0)
 
-  // Session timer — survives page navigation (component remount).
-  //
-  // Problem: on remount all refs reset to their initial values (null/0).
-  // useEffect only re-fires when deps *change* — but session is already live in
-  // context and its id/duration_seconds haven't changed, so the effect never
-  // runs and the timer stays at 0.
-  //
-  // Fix: compute the mount-time base directly from start_time (UTC-safe: the
-  // backend always serialises with a Z/+00:00 suffix via Pydantic's _as_utc
-  // validator), then let the effect only handle subsequent state transitions
-  // (pause / resume / end). This way the timer is correct the instant the
-  // component mounts regardless of whether the effect fires.
   const mountBaseRef    = useRef(
-    // Seed from start_time on mount so remounts resume at the correct offset.
-    // new Date() on a string with Z/+00:00 is always UTC-correct in all browsers.
     session?.start_time && trackingState === "tracking"
       ? Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 1000))
       : (session?.duration_seconds ?? 0)
@@ -91,15 +102,11 @@ export default function LiveMonitoring() {
       return undefined
     }
 
-    // trackingState === "tracking"
     if (pausedSinceRef.current !== null) {
       totalPausedMsRef.current += Date.now() - pausedSinceRef.current
       pausedSinceRef.current = null
     }
 
-    // Only re-anchor when switching to a *different* session (new start).
-    // On a plain remount session_id is the same, so we keep mountBaseRef
-    // (already seeded above) and just restart the interval.
     if (localStartRef.current === null) {
       baseSecondsRef.current = mountBaseRef.current
       localStartRef.current  = Date.now()
@@ -114,7 +121,6 @@ export default function LiveMonitoring() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.session_id, trackingState])
 
-  // React to prediction pushes (both WebSocket and HTTP response via onPrediction callback)
   useEffect(() => {
     if (!prediction) return
     const { load_level, confidence: conf, typing_wpm, keys_pressed } = prediction
@@ -124,16 +130,12 @@ export default function LiveMonitoring() {
     setConfidence(Math.round(conf * 100))
     setLastUpdated(new Date())
     setHistory((prev) => [...prev.slice(-29), { time, score: Math.round(conf * 100) }])
-
-    // Only update WPM history and latest value when a meaningful WPM is present.
-    // null means not enough data yet; 0 is also not useful to display or chart.
     if (typing_wpm != null && typing_wpm > 0) {
       setLatestWpm(typing_wpm)
       setWpmHistory((prev) => [...prev.slice(-29), { time, wpm: typing_wpm }])
     }
   }, [prediction])
 
-  // Reset display values when tracking stops
   useEffect(() => {
     if (trackingState === "idle") {
       setLatestWpm(null)
@@ -148,11 +150,8 @@ export default function LiveMonitoring() {
   const WsIcon = wsUI.icon
 
   const liveMouseEvents = quality?.mouseEvents ?? 0
-  // Show the most recent WPM value, or "—" if tracking hasn't produced one yet
   const liveWpm = latestWpm != null ? latestWpm : "—"
 
-  // Accumulate key events: quality.keyEvents resets each flush, so track the
-  // delta and add it to our running total whenever the counter resets.
   useEffect(() => {
     if (trackingState === "idle") {
       prevKeyEvents.current = 0
@@ -160,26 +159,24 @@ export default function LiveMonitoring() {
     }
     const current = quality?.keyEvents ?? 0
     if (current < prevKeyEvents.current) {
-      // Counter just flushed/reset — bank what we had
       setTotalKeys((t) => t + prevKeyEvents.current)
     }
     prevKeyEvents.current = current
   }, [quality?.keyEvents, trackingState])
 
-  // WPM chart: filter out zeros (shouldn't exist, but guard anyway)
   const validWpmHistory = wpmHistory.filter((p) => p.wpm > 0)
-  // Recharts LineChart needs ≥2 points to draw a line; show dots for single point
-  const wpmDot = validWpmHistory.length === 1 ? { r: 4, fill: "#10B981" } : false
+  const wpmDot = validWpmHistory.length === 1 ? { r: 4, fill: "#34c759" } : false
+  const activeTooltip = isDark ? tooltipStyleDark : tooltipStyle
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
       <PageHeader
         title="Live Monitoring"
-        subtitle="Real-time behavioral signals — data flows via WebSocket after each prediction"
+        description="Real-time behavioral signals — data flows via WebSocket after each prediction"
       >
         <span
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
-            ${wsUI.bg} ${wsUI.color} text-xs font-semibold`}
+            ${wsUI.bg} ${wsUI.color} text-[11px] font-semibold`}
           role="status"
           aria-live="polite"
           aria-label={`Connection: ${wsUI.label}`}
@@ -189,17 +186,17 @@ export default function LiveMonitoring() {
           {wsUI.label}
         </span>
         {lastUpdated && (
-          <span className="text-xs text-gray-400">
+          <span className="text-[11px] text-[#86868b] dark:text-[#a1a1a6] nums">
             Last update: {lastUpdated.toLocaleTimeString()}
           </span>
         )}
         <TrackingControls />
-        <LoadBadge level={loadLevel} />
+        <LoadBadge level={loadLevel} animate={trackingState === "tracking"} />
       </PageHeader>
 
       <TrackingStatus />
 
-      {/* Stat cards */}
+      {/* Stat cards — refined */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard label="Confidence"   value={confidence != null ? confidence : "—"} unit={confidence != null ? "%" : ""} icon={Zap}
           accent="primary"  sub="Model prediction confidence" />
@@ -213,12 +210,13 @@ export default function LiveMonitoring() {
           accent="primary" sub="Total keystrokes this session" />
       </div>
 
-      {/* Offline banner */}
+      {/* Offline banner — refined */}
       {!connected && status !== "connecting" && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           role="alert"
-          className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3
-            flex items-center gap-3 text-sm text-warning">
+          className="rounded-xl border border-amber-200/70 dark:border-amber-500/25
+            bg-amber-50/70 dark:bg-amber-500/10 px-4 py-3
+            flex items-center gap-3 text-[13px] text-amber-700 dark:text-amber-300">
           <WifiOff className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span>
             {status === "reconnecting"
@@ -229,85 +227,99 @@ export default function LiveMonitoring() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Confidence chart */}
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }} className="card p-5">
+        {/* Confidence chart — refined */}
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }} className="card p-5">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-              <Cpu className="w-5 h-5 text-primary" aria-hidden="true" />
+            <div className="w-9 h-9 rounded-xl bg-indigo-50/80 dark:bg-indigo-500/12
+              flex items-center justify-center">
+              <Cpu className="w-[18px] h-[18px] text-indigo-500 dark:text-indigo-300" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+              <h3 className="text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] tracking-[-0.005em]">
                 Confidence stream
               </h3>
-              <p className="text-xs text-gray-400">
+              <p className="text-[11px] text-[#86868b] dark:text-[#a1a1a6] mt-0.5">
                 Pushed live via WebSocket after each flush interval
               </p>
             </div>
           </div>
           {history.length < 2
             ? <EmptyState icon={Cpu} title="No data yet"
-                description="Start tracking and interact with your device to see the confidence stream." />
+                description="Start tracking and interact with your device to see the confidence stream."
+                tone="primary" />
             : (
               <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={history} aria-label="Confidence over time chart">
+                <AreaChart data={history} margin={{ top: 6, right: 4, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="liveGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%"   stopColor="#2563EB" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#2563EB" stopOpacity={0} />
+                      <stop offset="0%"   stopColor="#6366f1" stopOpacity={0.28} />
+                      <stop offset="100%" stopColor="#6366f1" stopOpacity={0}    />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.12)" vertical={false} />
-                  <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false}
-                    tickFormatter={(v) => `${v}%`} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v}%`, "Confidence"]} />
-                  <Area type="monotone" dataKey="score" stroke="#2563EB" strokeWidth={2}
-                    fill="url(#liveGrad)" name="Confidence" />
+                  <CartesianGrid strokeDasharray="0" stroke="rgba(120,120,128,0.12)" vertical={false} />
+                  <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#86868b" }} axisLine={false} tickLine={false} dy={8} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#86868b" }} axisLine={false} tickLine={false}
+                    tickFormatter={(v) => `${v}%`} width={42} />
+                  <Tooltip contentStyle={activeTooltip}
+                    labelStyle={{ color: isDark ? "#a1a1a6" : "#6e6e73", fontSize: 11, marginBottom: 2 }}
+                    itemStyle={{ color: isDark ? "#f5f5f7" : "#1d1d1f", fontSize: 12, fontWeight: 600 }}
+                    formatter={(v) => [`${v}%`, "Confidence"]}
+                    cursor={{ stroke: "#6366f1", strokeOpacity: 0.3, strokeWidth: 1 }} />
+                  <Area type="monotone" dataKey="score" stroke="#6366f1" strokeWidth={1.75}
+                    fill="url(#liveGrad)" name="Confidence"
+                    activeDot={{ r: 4, fill: "#6366f1", stroke: isDark ? "#0e0e14" : "#fff", strokeWidth: 2 }}
+                    isAnimationActive animationDuration={500} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
         </motion.div>
 
-        {/* WPM chart */}
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }} className="card p-5">
+        {/* WPM chart — refined */}
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1, ease: [0.22, 1, 0.36, 1] }} className="card p-5">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-9 h-9 rounded-xl bg-success/10 flex items-center justify-center">
-              <Keyboard className="w-5 h-5 text-success" aria-hidden="true" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-50/80 dark:bg-emerald-500/12
+              flex items-center justify-center">
+              <Keyboard className="w-[18px] h-[18px] text-emerald-500 dark:text-emerald-300" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Typing speed</h3>
-              <p className="text-xs text-gray-400">
+              <h3 className="text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] tracking-[-0.005em]">
+                Typing speed
+              </h3>
+              <p className="text-[11px] text-[#86868b] dark:text-[#a1a1a6] mt-0.5">
                 Words per minute computed from space-separated word counts
               </p>
             </div>
           </div>
           {validWpmHistory.length < 1
             ? <EmptyState icon={Keyboard} title="No typing data"
-                description="Type continuously during a session to see your WPM trend." />
+                description="Type continuously during a session to see your WPM trend."
+                tone="success" />
             : (
               <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={validWpmHistory} aria-label="Words per minute over time chart">
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.12)" vertical={false} />
-                  <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+                <LineChart data={validWpmHistory} margin={{ top: 6, right: 4, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="0" stroke="rgba(120,120,128,0.12)" vertical={false} />
+                  <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#86868b" }} axisLine={false} tickLine={false} dy={8} />
                   <YAxis
                     domain={([dataMin, dataMax]) => {
                       const pad = Math.max(10, Math.ceil((dataMax - dataMin) * 0.2))
                       return [Math.max(0, dataMin - pad), dataMax + pad]
                     }}
-                    tick={{ fontSize: 11, fill: "#94A3B8" }} axisLine={false} tickLine={false}
-                    tickFormatter={(v) => `${v}`}
-                    label={{ value: "wpm", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 10, fill: "#94A3B8" } }}
-                  />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} wpm`, "Typing speed"]} />
+                    tick={{ fontSize: 11, fill: "#86868b" }} axisLine={false} tickLine={false}
+                    tickFormatter={(v) => `${v}`} width={42} />
+                  <Tooltip contentStyle={activeTooltip}
+                    labelStyle={{ color: isDark ? "#a1a1a6" : "#6e6e73", fontSize: 11, marginBottom: 2 }}
+                    itemStyle={{ color: isDark ? "#f5f5f7" : "#1d1d1f", fontSize: 12, fontWeight: 600 }}
+                    formatter={(v) => [`${v} wpm`, "Typing speed"]}
+                    cursor={{ stroke: "#34c759", strokeOpacity: 0.3, strokeWidth: 1 }} />
                   <Line
                     type="monotone"
                     dataKey="wpm"
-                    stroke="#10B981"
-                    strokeWidth={2}
+                    stroke="#34c759"
+                    strokeWidth={1.75}
                     dot={wpmDot}
-                    activeDot={{ r: 5 }}
+                    activeDot={{ r: 4, fill: "#34c759", stroke: isDark ? "#0e0e14" : "#fff", strokeWidth: 2 }}
                     isAnimationActive={validWpmHistory.length > 1}
                     name="WPM"
                   />

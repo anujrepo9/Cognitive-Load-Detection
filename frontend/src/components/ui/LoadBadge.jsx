@@ -1,25 +1,24 @@
-import { motion } from "framer-motion"
-
+/**
+ * Load badge — Apple-style pill, refined.
+ * - Removed the heavy shadow-glow (was over-the-top).
+ * - Slimmer pill, tigher dot, monochrome + accent treatment.
+ */
 const styles = {
-  low:     {
-    badge: "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20",
-    dot: "bg-emerald-500",
-    glow: "shadow-emerald-500/30",
+  low: {
+    badge: "text-emerald-700 dark:text-emerald-300 bg-emerald-50/80 dark:bg-emerald-500/12 border-emerald-200/80 dark:border-emerald-500/25",
+    dot:   "bg-emerald-500",
   },
-  medium:  {
-    badge: "text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20",
-    dot: "bg-amber-500",
-    glow: "shadow-amber-500/30",
+  medium: {
+    badge: "text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-500/12 border-amber-200/80 dark:border-amber-500/25",
+    dot:   "bg-amber-500",
   },
-  high:    {
-    badge: "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20",
-    dot: "bg-red-500",
-    glow: "shadow-red-500/30",
+  high: {
+    badge: "text-red-700 dark:text-red-300 bg-red-50/80 dark:bg-red-500/12 border-red-200/80 dark:border-red-500/25",
+    dot:   "bg-red-500",
   },
   unknown: {
-    badge: "text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700",
-    dot: "bg-gray-400",
-    glow: "",
+    badge: "text-[#6e6e73] dark:text-[#a1a1a6] bg-[#f5f5f7]/80 dark:bg-white/5 border-[#e5e5ea]/80 dark:border-white/10",
+    dot:   "bg-[#c7c7cc] dark:bg-[#48484a]",
   },
 }
 
@@ -27,14 +26,18 @@ const labels = {
   low: "Low Load", medium: "Medium Load", high: "High Load", unknown: "Unknown",
 }
 
-export default function LoadBadge({ level = "unknown", className = "", showDot = true, animate = false }) {
+export default function LoadBadge({
+  level = "unknown",
+  className = "",
+  showDot = true,
+  animate = false,
+}) {
   const s = styles[level] || styles.unknown
   const label = labels[level] || "Unknown"
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1
-        text-xs font-semibold rounded-full border ${s.badge} ${s.glow ? `shadow-sm ${s.glow}` : ""} ${className}`}
+      className={`badge border ${s.badge} ${className}`}
     >
       {showDot && (
         <span className="relative flex w-1.5 h-1.5">

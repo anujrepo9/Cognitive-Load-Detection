@@ -12,105 +12,219 @@
   }
 }
 
+/* Use system fonts first (SF Pro on macOS, Segoe UI Variable on Windows 11,
+ * Inter via Google Fonts as final fallback). Inter is loaded only if neither
+ * of the system fonts is available. */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
+/* ──────────────────────────────────────────────────────────────────────────
+ *  DESIGN TOKENS
+ * ────────────────────────────────────────────────────────────────────────── */
 @layer base {
   :root {
     --grid: 8px;
     --accent: #6366f1;
     --accent-2: #8b5cf6;
-    --accent-glow: rgba(99, 102, 241, 0.3);
-    --line:  #E5E7EB;
-    --line-dark: #1f2937;
+    --accent-glow: rgba(99, 102, 241, 0.30);
+
+    /* Apple-style label colors (light) */
+    --label:           #1d1d1f;
+    --label-secondary: #6e6e73;
+    --label-tertiary:  #86868b;
+    --label-quaternary:#c7c7cc;
+
+    /* Apple-style separator (light) — 0.36 alpha is the system default */
+    --separator:        rgba(60, 60, 67, 0.29);
+    --separator-opaque: rgba(60, 60, 67, 0.12);
+
+    /* Canvas surfaces */
+    --canvas:  #f5f5f7;
+    --surface: #ffffff;
     --sidebar-w: 240px;
   }
 
+  .dark {
+    --label:           #f5f5f7;
+    --label-secondary: #a1a1a6;
+    --label-tertiary:  #6e6e73;
+    --label-quaternary:#48484a;
+
+    --separator:        rgba(84, 84, 88, 0.65);
+    --separator-opaque: rgba(255, 255, 255, 0.08);
+
+    --canvas:  #08080c;
+    --surface: #0e0e14;
+  }
+
   html {
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01", "tnum";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
 
   body {
-    @apply bg-gray-50 text-gray-900 font-sans;
-    letter-spacing: -0.011em;
+    @apply text-[#1d1d1f] font-sans;
+    background-color: var(--canvas);
+    letter-spacing: -0.013em;
+    /* Subtle canvas grain — barely visible, gives depth without distraction */
+    background-image:
+      radial-gradient(at 0% 0%, rgba(99,102,241,0.04) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(139,92,246,0.03) 0px, transparent 50%);
+    background-attachment: fixed;
   }
 
   .dark body {
-    @apply bg-[#080b14] text-gray-100;
+    @apply text-[#f5f5f7];
+    background-color: var(--canvas);
+    background-image:
+      radial-gradient(at 0% 0%, rgba(99,102,241,0.06) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(139,92,246,0.04) 0px, transparent 50%);
   }
 
   :focus-visible {
     @apply outline-none ring-2 ring-indigo-500/60 ring-offset-2 ring-offset-white;
   }
   .dark :focus-visible {
-    @apply ring-offset-[#080b14];
+    @apply ring-offset-[#08080c];
   }
 
-  ::-webkit-scrollbar       { @apply w-[3px] h-[3px]; }
-  ::-webkit-scrollbar-track { @apply bg-transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-gray-300 dark:bg-gray-700 rounded-full; }
+  /* Slim, almost-invisible scrollbars — Apple style */
+  ::-webkit-scrollbar       { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(120, 120, 128, 0.24);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(120, 120, 128, 0.40);
+  }
 
   input, select, textarea { @apply outline-none; }
-  ::placeholder { @apply text-gray-400; }
+  ::placeholder { color: var(--label-tertiary); }
 
-  h1 { @apply text-2xl font-bold tracking-tight leading-tight; }
-  h2 { @apply text-lg font-semibold tracking-tight; }
-  h3 { @apply text-sm font-semibold; }
+  /* Refined type scale */
+  h1 { font-size: 1.625rem; font-weight: 700; letter-spacing: -0.024em; line-height: 1.15; }
+  h2 { font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.018em; line-height: 1.3; }
+  h3 { font-size: 0.8125rem; font-weight: 600; letter-spacing: -0.005em; line-height: 1.4; }
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+ *  COMPONENTS
+ * ────────────────────────────────────────────────────────────────────────── */
 @layer components {
 
-  /* ── Card ─────────────────────────────────────────────────────────────────── */
+  /* ── Card (refined: softer shadow, hairline border, no flat fill) ──────── */
   .card {
-    @apply bg-white dark:bg-[#0d1117]
-      border border-gray-200 dark:border-gray-800
-      rounded-xl
-      transition-colors duration-150;
+    background: var(--surface);
+    border: 1px solid var(--separator-opaque);
+    border-radius: 18px;
+    box-shadow:
+      0 1px 2px rgba(0,0,0,0.04),
+      0 4px 16px rgba(0,0,0,0.04),
+      0 0 0 0.5px rgba(0,0,0,0.03);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  }
+  .dark .card {
+    background: rgba(20, 20, 26, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow:
+      0 1px 2px rgba(0,0,0,0.4),
+      0 4px 16px rgba(0,0,0,0.3),
+      0 0 0 0.5px rgba(255,255,255,0.03);
   }
 
   .card-hover {
-    @apply card hover:border-indigo-300 dark:hover:border-indigo-700
-      hover:shadow-lg hover:shadow-indigo-500/5
-      transition-all duration-200;
+    @apply card;
+  }
+  .card-hover:hover {
+    border-color: rgba(99, 102, 241, 0.24);
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.04),
+      0 12px 32px rgba(99, 102, 241, 0.08),
+      0 0 0 0.5px rgba(99, 102, 241, 0.12);
+    transform: translateY(-1px);
+  }
+  .dark .card-hover:hover {
+    border-color: rgba(99, 102, 241, 0.30);
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.5),
+      0 12px 32px rgba(0, 0, 0, 0.5),
+      0 0 0 0.5px rgba(99, 102, 241, 0.18);
   }
 
-  /* ── Glass ─────────────────────────────────────────────────────────────────── */
+  /* ── Liquid glass — the real surface system ───────────────────────────────
+   * Layered: subtle white tint + 20px blur with saturation boost + inner
+   * highlight on top + soft outer shadow + 0.5px hairline. Light & dark
+   * variants. This is what gives the Apple-grade "frosted" feel — not just
+   * a flat backdrop-blur-xl.
+   */
   .glass {
-    @apply bg-white/70 dark:bg-[#0d1117]/80
-      border border-white/60 dark:border-gray-700/50
-      backdrop-blur-xl rounded-xl;
+    background: linear-gradient(180deg, rgba(255,255,255,0.78) 0%, rgba(255,255,255,0.62) 100%);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.55);
+    border-radius: 18px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.9) inset,
+      0 1px 2px rgba(0,0,0,0.04),
+      0 8px 24px rgba(0,0,0,0.05),
+      0 0 0 0.5px rgba(0,0,0,0.04);
+  }
+  .dark .glass {
+    background: linear-gradient(180deg, rgba(28,28,32,0.78) 0%, rgba(20,20,26,0.62) 100%);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 18px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.04) inset,
+      0 1px 2px rgba(0,0,0,0.4),
+      0 8px 24px rgba(0,0,0,0.3),
+      0 0 0 0.5px rgba(255,255,255,0.04);
   }
 
-  .glass-dark {
-    @apply bg-gray-900/80 border border-gray-700/50 backdrop-blur-xl rounded-xl;
+  /* Stronger glass for floating panels (nav, dropdowns, modals) */
+  .glass-strong {
+    background: linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.82) 100%);
+    backdrop-filter: blur(40px) saturate(200%);
+    -webkit-backdrop-filter: blur(40px) saturate(200%);
+    border: 1px solid rgba(255,255,255,0.7);
+    border-radius: 18px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.95) inset,
+      0 4px 12px rgba(0,0,0,0.06),
+      0 16px 48px rgba(0,0,0,0.08),
+      0 0 0 0.5px rgba(0,0,0,0.05);
   }
-
-  /* ── Gradient backgrounds ──────────────────────────────────────────────────── */
-  .bg-mesh {
-    background-image:
-      radial-gradient(at 40% 20%, rgba(99,102,241,0.12) 0px, transparent 50%),
-      radial-gradient(at 80% 0%, rgba(139,92,246,0.08) 0px, transparent 50%),
-      radial-gradient(at 0% 50%, rgba(99,102,241,0.06) 0px, transparent 50%);
-  }
-
-  .dark .bg-mesh {
-    background-image:
-      radial-gradient(at 40% 20%, rgba(99,102,241,0.18) 0px, transparent 50%),
-      radial-gradient(at 80% 0%, rgba(139,92,246,0.12) 0px, transparent 50%),
-      radial-gradient(at 0% 50%, rgba(99,102,241,0.08) 0px, transparent 50%);
+  .dark .glass-strong {
+    background: linear-gradient(180deg, rgba(32,32,38,0.92) 0%, rgba(24,24,30,0.82) 100%);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.06) inset,
+      0 4px 12px rgba(0,0,0,0.5),
+      0 16px 48px rgba(0,0,0,0.4),
+      0 0 0 0.5px rgba(255,255,255,0.05);
   }
 
   /* ── Skeleton ────────────────────────────────────────────────────────────── */
   .skeleton {
-    @apply bg-gray-100 dark:bg-[#1a2035] relative overflow-hidden rounded-lg;
+    background: rgba(120, 120, 128, 0.12);
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+  }
+  .dark .skeleton {
+    background: rgba(120, 120, 128, 0.18);
   }
   .skeleton::after {
     content: "";
-    @apply absolute inset-0;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
-    animation: shimmer 1.5s linear infinite;
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+    animation: shimmer 1.6s linear infinite;
     background-size: 200% 100%;
   }
   .dark .skeleton::after {
@@ -119,101 +233,173 @@
 
   /* ── Input ───────────────────────────────────────────────────────────────── */
   .input {
-    @apply w-full bg-white dark:bg-[#0d1117]
-      border border-gray-200 dark:border-gray-700
-      rounded-lg px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100
-      placeholder-gray-400
-      focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20
-      transition-all duration-150;
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--separator-opaque);
+    border-radius: 12px;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--label);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .input::placeholder { color: var(--label-tertiary); }
+  .input:focus {
+    border-color: rgba(99, 102, 241, 0.5);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
   }
 
-  /* ── Buttons ──────────────────────────────────────────────────────────────── */
+  /* ── Buttons ─────────────────────────────────────────────────────────────── */
+  /* Primary — solid, pill, refined shadow. */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
-      bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold
-      rounded-lg shadow-sm shadow-indigo-500/20
-      transition-all duration-150
-      active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none
-      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60;
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
+    color: #fff;
+    font-size: 0.875rem; font-weight: 600;
+    border-radius: 9999px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.18) inset,
+      0 1px 2px rgba(0,0,0,0.10),
+      0 4px 12px rgba(99, 102, 241, 0.28);
+    transition: transform 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
   }
+  .btn-primary:hover  { filter: brightness(1.06); box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 2px 4px rgba(0,0,0,0.10), 0 6px 18px rgba(99,102,241,0.36); }
+  .btn-primary:active { transform: scale(0.97); }
+  .btn-primary:disabled { opacity: 0.45; pointer-events: none; filter: none; }
+  .btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(99,102,241,0.32), 0 4px 12px rgba(99,102,241,0.28); }
 
+  /* Secondary — glass surface with subtle border. */
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
-      bg-white dark:bg-[#0d1117]
-      hover:bg-gray-50 dark:hover:bg-[#131c2e]
-      text-gray-700 dark:text-gray-300 text-sm font-medium
-      border border-gray-200 dark:border-gray-700
-      rounded-lg
-      transition-all duration-150
-      active:scale-[0.98]
-      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60;
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: rgba(255,255,255,0.7);
+    color: var(--label);
+    font-size: 0.875rem; font-weight: 500;
+    border: 1px solid var(--separator-opaque);
+    border-radius: 9999px;
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.6) inset, 0 1px 2px rgba(0,0,0,0.04);
+    transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
   }
+  .dark .btn-secondary {
+    background: rgba(28,28,32,0.7);
+    color: var(--label);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 1px 2px rgba(0,0,0,0.3);
+  }
+  .btn-secondary:hover { background: rgba(255,255,255,0.85); border-color: rgba(99,102,241,0.24); }
+  .dark .btn-secondary:hover { background: rgba(40,40,46,0.85); }
+  .btn-secondary:active { transform: scale(0.97); }
+  .btn-secondary:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(99,102,241,0.22); }
 
+  /* Ghost — text-only with hover background. */
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-3 py-2
-      text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white
-      hover:bg-gray-100 dark:hover:bg-gray-800
-      text-sm font-medium rounded-lg
-      transition-all duration-150;
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    padding: 0.375rem 0.625rem;
+    color: var(--label-secondary);
+    font-size: 0.8125rem; font-weight: 500;
+    border-radius: 8px;
+    transition: color 0.12s ease, background 0.12s ease;
   }
+  .btn-ghost:hover { color: var(--label); background: rgba(120, 120, 128, 0.12); }
 
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5
-      bg-red-600 hover:bg-red-500 text-white text-sm font-semibold
-      rounded-lg shadow-sm shadow-red-500/20
-      transition-all duration-150
-      active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none;
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: linear-gradient(180deg, #ff3b30 0%, #d70015 100%);
+    color: #fff;
+    font-size: 0.875rem; font-weight: 600;
+    border-radius: 9999px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 4px 12px rgba(255,59,48,0.28);
+    transition: transform 0.12s ease, filter 0.15s ease;
   }
+  .btn-danger:hover  { filter: brightness(1.06); }
+  .btn-danger:active { transform: scale(0.97); }
+  .btn-danger:disabled { opacity: 0.45; pointer-events: none; }
 
   /* ── Status dot (animated pulse) ─────────────────────────────────────────── */
   .status-dot {
-    @apply relative inline-flex w-2 h-2 rounded-full;
+    position: relative;
+    display: inline-flex;
+    width: 8px; height: 8px;
+    border-radius: 9999px;
   }
   .status-dot::before {
     content: "";
-    @apply absolute inset-0 rounded-full animate-ping opacity-75;
+    position: absolute; inset: 0;
+    border-radius: 9999px;
+    background: inherit;
+    animation: ping 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    opacity: 0.6;
   }
 
   /* ── Page header ─────────────────────────────────────────────────────────── */
-  .page-header {
-    @apply mb-6;
-  }
+  .page-header { margin-bottom: 1.5rem; }
   .page-header h1 {
-    @apply text-xl font-bold text-gray-900 dark:text-white;
+    font-size: 1.625rem;
+    font-weight: 700;
+    color: var(--label);
+    letter-spacing: -0.024em;
   }
   .page-header p {
-    @apply text-sm text-gray-500 dark:text-gray-400 mt-0.5;
+    font-size: 0.875rem;
+    color: var(--label-secondary);
+    margin-top: 0.25rem;
   }
 
-  /* ── Gradient text ──────────────────────────────────────────────────────── */
+  /* ── Gradient text (used very sparingly) ─────────────────────────────────── */
   .text-gradient {
-    @apply bg-gradient-to-r from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-violet-400
-      bg-clip-text text-transparent;
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
   }
 
-  /* ── Badge ────────────────────────────────────────────────────────────────── */
+  /* ── Badge ─────────────────────────────────────────────────────────────────── */
   .badge {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1
-      text-xs font-semibold rounded-full border;
+    display: inline-flex; align-items: center; gap: 0.375rem;
+    padding: 0.1875rem 0.5rem;
+    font-size: 0.6875rem; font-weight: 600;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    letter-spacing: -0.005em;
   }
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+ *  UTILITIES
+ * ────────────────────────────────────────────────────────────────────────── */
 @layer utilities {
-  /* Glow shadow utilities */
-  .shadow-glow-indigo {
-    box-shadow: 0 0 20px rgba(99,102,241,0.3), 0 4px 16px rgba(99,102,241,0.15);
-  }
-  .shadow-glow-primary {
-    box-shadow: 0 0 20px rgba(99,102,241,0.3), 0 4px 16px rgba(99,102,241,0.15);
-  }
-  .shadow-glow-accent {
-    box-shadow: 0 0 20px rgba(139,92,246,0.3), 0 4px 16px rgba(139,92,246,0.15);
+  .shadow-glow-indigo  { box-shadow: 0 0 24px rgba(99,102,241,0.25), 0 4px 16px rgba(99,102,241,0.12); }
+  .shadow-glow-primary { box-shadow: 0 0 24px rgba(99,102,241,0.25), 0 4px 16px rgba(99,102,241,0.12); }
+  .shadow-glow-accent  { box-shadow: 0 0 24px rgba(139,92,246,0.25), 0 4px 16px rgba(139,92,246,0.12); }
+
+  /* Tabular numbers for metric values — keeps digits aligned across cards */
+  .nums { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1, "ss01" 1; }
+
+  /* Subtle "live" glow used behind the cognitive load gauge */
+  .gauge-glow {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(48px);
+    pointer-events: none;
+    opacity: 0.55;
+    transition: background 0.6s ease, opacity 0.6s ease;
   }
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+ *  KEYFRAMES (kept at top-level for re-use outside Tailwind layers)
+ * ────────────────────────────────────────────────────────────────────────── */
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position:  200% 0; }
+}
+
+@keyframes ping {
+  0%   { transform: scale(1);   opacity: 0.6; }
+  75%, 100% { transform: scale(2.2); opacity: 0; }
 }
 
 @keyframes pulse-ring {
@@ -231,21 +417,43 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Sidebar gradient accent bar */
+/* Sidebar brand mark — single subtle gradient, no decorative clutter */
 .sidebar-brand-gradient {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
 }
 
-/* Live indicator */
+/* Live indicator (very subtle) */
 @keyframes live-pulse {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
+  50%       { opacity: 0.45; }
 }
-.live-dot {
-  animation: live-pulse 1.4s ease-in-out infinite;
+.live-dot { animation: live-pulse 1.6s ease-in-out infinite; }
+
+/* Glow effect on active nav items — thin inset, not chunky */
+.nav-active-glow {
+  box-shadow: inset 2px 0 0 #6366f1;
 }
 
-/* Glow effect on active nav items */
-.nav-active-glow {
-  box-shadow: inset 3px 0 0 #6366f1;
+/* Recharts overrides — hide focus outlines, soften grid, glass tooltips */
+.recharts-surface:focus { outline: none; }
+.recharts-cartesian-axis-tick text {
+  fill: var(--label-tertiary);
+  font-size: 11px;
+  font-family: -apple-system, "SF Pro Text", Inter, system-ui, sans-serif;
+}
+.recharts-cartesian-grid line {
+  stroke: var(--separator-opaque);
+}
+.recharts-default-tooltip {
+  background: rgba(255,255,255,0.85) !important;
+  border: 1px solid rgba(255,255,255,0.6) !important;
+  border-radius: 12px !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.10), 0 0 0 0.5px rgba(0,0,0,0.04);
+}
+.dark .recharts-default-tooltip {
+  background: rgba(28,28,32,0.85) !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.04);
 }

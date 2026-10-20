@@ -1,41 +1,44 @@
 import { motion } from "framer-motion"
 import { TrendingUp, TrendingDown } from "lucide-react"
 
+/* Refined palette per accent. We removed the loud top-gradient bar — it read
+ * as a generic admin template. Instead each accent uses a soft, monochrome
+ * tinted chip and a 2px left accent stripe that fades in on hover. */
 const accentConfig = {
   primary: {
-    iconBg: "bg-indigo-50 dark:bg-indigo-500/10",
-    iconColor: "text-indigo-500",
-    borderTop: "from-indigo-500 to-violet-500",
-    trendPos: "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10",
-    trendNeg: "text-red-600 bg-red-50 dark:bg-red-500/10",
+    chipBg:    "bg-indigo-50 dark:bg-indigo-500/10",
+    chipColor: "text-indigo-600 dark:text-indigo-300",
+    stripe:    "bg-indigo-500",
+    trendPos:  "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10",
+    trendNeg:  "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10",
   },
   accent: {
-    iconBg: "bg-violet-50 dark:bg-violet-500/10",
-    iconColor: "text-violet-500",
-    borderTop: "from-violet-500 to-purple-500",
-    trendPos: "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10",
-    trendNeg: "text-red-600 bg-red-50 dark:bg-red-500/10",
+    chipBg:    "bg-violet-50 dark:bg-violet-500/10",
+    chipColor: "text-violet-600 dark:text-violet-300",
+    stripe:    "bg-violet-500",
+    trendPos:  "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10",
+    trendNeg:  "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10",
   },
   success: {
-    iconBg: "bg-emerald-50 dark:bg-emerald-500/10",
-    iconColor: "text-emerald-500",
-    borderTop: "from-emerald-500 to-teal-500",
-    trendPos: "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10",
-    trendNeg: "text-red-600 bg-red-50 dark:bg-red-500/10",
+    chipBg:    "bg-emerald-50 dark:bg-emerald-500/10",
+    chipColor: "text-emerald-600 dark:text-emerald-300",
+    stripe:    "bg-emerald-500",
+    trendPos:  "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10",
+    trendNeg:  "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10",
   },
   warning: {
-    iconBg: "bg-amber-50 dark:bg-amber-500/10",
-    iconColor: "text-amber-500",
-    borderTop: "from-amber-500 to-orange-500",
-    trendPos: "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10",
-    trendNeg: "text-red-600 bg-red-50 dark:bg-red-500/10",
+    chipBg:    "bg-amber-50 dark:bg-amber-500/10",
+    chipColor: "text-amber-600 dark:text-amber-300",
+    stripe:    "bg-amber-500",
+    trendPos:  "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10",
+    trendNeg:  "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10",
   },
   danger: {
-    iconBg: "bg-red-50 dark:bg-red-500/10",
-    iconColor: "text-red-500",
-    borderTop: "from-red-500 to-rose-500",
-    trendPos: "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10",
-    trendNeg: "text-red-600 bg-red-50 dark:bg-red-500/10",
+    chipBg:    "bg-red-50 dark:bg-red-500/10",
+    chipColor: "text-red-600 dark:text-red-300",
+    stripe:    "bg-red-500",
+    trendPos:  "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10",
+    trendNeg:  "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10",
   },
 }
 
@@ -49,34 +52,42 @@ export default function StatCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay, ease: "easeOut" }}
-      className={`card p-5 relative overflow-hidden group hover:border-gray-300 dark:hover:border-gray-700 transition-all duration-200 ${className}`}
+      transition={{ duration: 0.32, delay, ease: [0.22, 1, 0.36, 1] }}
+      className={`card-hover p-5 relative overflow-hidden group ${className}`}
     >
-      {/* Top gradient accent */}
-      <div className={`absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r ${cfg.borderTop}`} />
+      {/* Left accent stripe — appears on hover only, very subtle */}
+      <span
+        aria-hidden="true"
+        className={`absolute left-0 top-4 bottom-4 w-[2px] rounded-full ${cfg.stripe}
+          opacity-0 group-hover:opacity-100 transition-opacity duration-200`}
+      />
 
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 relative">
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3">
+          <p className="text-[11px] font-medium tracking-wide uppercase
+            text-[#86868b] dark:text-[#a1a1a6] mb-3">
             {label}
           </p>
-          <p className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white leading-none">
+          <p className="font-rounded text-[1.75rem] font-semibold tracking-[-0.022em]
+            text-[#1d1d1f] dark:text-[#f5f5f7] leading-none nums">
             {value}
             {unit && (
-              <span className="text-sm font-normal text-gray-400 ml-1">{unit}</span>
+              <span className="ml-1 text-[0.875rem] font-medium text-[#86868b] dark:text-[#a1a1a6]">
+                {unit}
+              </span>
             )}
           </p>
         </div>
         {Icon && (
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${cfg.iconBg}
-            group-hover:scale-110 transition-transform duration-200`}>
-            <Icon className={`w-4.5 h-4.5 w-[18px] h-[18px] ${cfg.iconColor}`} aria-hidden="true" />
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${cfg.chipBg}
+            transition-transform duration-200 group-hover:scale-[1.04]`}>
+            <Icon className={`w-[18px] h-[18px] ${cfg.chipColor}`} aria-hidden="true" />
           </div>
         )}
       </div>
 
       {(sub || trend != null) && (
-        <div className="flex items-center gap-2 mt-3">
+        <div className="flex items-center gap-2 mt-3 relative">
           {trend != null && (
             <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-md
               ${trend >= 0 ? cfg.trendPos : cfg.trendNeg}`}>
@@ -86,12 +97,16 @@ export default function StatCard({
               {Math.abs(trend)}%
             </span>
           )}
-          {sub && <span className="text-[11px] text-gray-400">{sub}</span>}
+          {sub && (
+            <span className="text-[11px] text-[#86868b] dark:text-[#a1a1a6] truncate">
+              {sub}
+            </span>
+          )}
         </div>
       )}
 
       {delta != null && (
-        <p className="text-[11px] text-gray-400 mt-1">
+        <p className="text-[11px] text-[#86868b] dark:text-[#a1a1a6] mt-1 nums">
           {delta >= 0 ? "+" : ""}{delta} vs last period
         </p>
       )}

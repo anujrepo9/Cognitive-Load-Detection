@@ -28,25 +28,27 @@ function NavItem({ to, icon: Icon, label, onClick }) {
       {({ isActive }) => (
         <div
           className={`
-            relative flex items-center gap-3 mx-3 px-3 py-2.5 rounded-lg
-            text-[13px] font-medium transition-all duration-150 group
+            relative flex items-center gap-3 mx-2 px-3 py-2 rounded-[10px]
+            text-[13px] font-medium transition-colors duration-150 group
             ${isActive
-              ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
-              : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5"
+              ? "bg-indigo-100/90 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-200"
+              : "text-[#6e6e73] dark:text-[#a1a1a6] hover:text-[#1d1d1f] dark:hover:text-[#f5f5f7] hover:bg-black/[0.04] dark:hover:bg-white/5"
             }`}
           aria-current={isActive ? "page" : undefined}
         >
+          {/* Active indicator — thin pill behind icon, not a chunky bar */}
           {isActive && (
-            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-indigo-500 rounded-full -ml-3" />
+            <span aria-hidden="true"
+              className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-indigo-500" />
           )}
           <Icon
-            className={`w-4 h-4 shrink-0 transition-transform duration-150 group-hover:scale-105
-              ${isActive ? "text-indigo-500" : "text-gray-400 dark:text-gray-500"}`}
+            className={`w-4 h-4 shrink-0 transition-transform duration-150 group-hover:scale-[1.06]
+              ${isActive ? "text-indigo-600 dark:text-indigo-300" : "text-[#6e6e73] dark:text-[#a1a1a6]"}`}
             aria-hidden="true"
           />
-          <span className="flex-1">{label}</span>
+          <span className="flex-1 tracking-[-0.005em]">{label}</span>
           {isActive && (
-            <ChevronRight className="w-3 h-3 text-indigo-400 opacity-60" />
+            <ChevronRight className="w-3 h-3 text-indigo-400 opacity-70" />
           )}
         </div>
       )}
@@ -57,70 +59,72 @@ function NavItem({ to, icon: Icon, label, onClick }) {
 function SidebarContent({ user, onLogout, onNavClick }) {
   return (
     <div className="flex flex-col h-full">
-      {/* Brand */}
+      {/* Brand — slim, no decorative glow */}
       <div className="flex items-center px-5 h-16 shrink-0">
         <NavLink to="/dashboard" onClick={onNavClick}
           className="flex items-center gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 rounded-lg p-1 -m-1"
           aria-label="CogniLoad — Dashboard">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600
-            flex items-center justify-center shadow-lg shadow-indigo-500/30 shrink-0">
-            <BrainCircuit className="w-4.5 h-4.5 text-white w-[18px] h-[18px]" aria-hidden="true" />
+          <div className="w-8 h-8 rounded-[10px] sidebar-brand-gradient
+            flex items-center justify-center shadow-md shadow-indigo-500/25 shrink-0">
+            <BrainCircuit className="w-[18px] h-[18px] text-white" aria-hidden="true" />
           </div>
           <div>
-            <span className="text-sm font-bold tracking-tight text-gray-900 dark:text-white">
-              Cogni<span className="text-indigo-500">Load</span>
+            <span className="text-[14px] font-semibold tracking-[-0.018em] text-[#1d1d1f] dark:text-[#f5f5f7]">
+              Cogni<span className="text-indigo-500 dark:text-indigo-400">Load</span>
             </span>
-            <div className="text-[10px] text-gray-400 leading-none mt-0.5">Cognitive Monitor</div>
+            <div className="text-[10px] text-[#86868b] dark:text-[#a1a1a6] leading-none mt-0.5">
+              Cognitive Monitor
+            </div>
           </div>
         </NavLink>
       </div>
 
       {/* Divider */}
-      <div className="h-px bg-gray-100 dark:bg-gray-800 mx-4" />
+      <div className="h-px bg-[#e5e5ea] dark:bg-white/5 mx-4" />
 
       {/* Nav */}
       <nav aria-label="Main navigation" className="flex-1 py-4 overflow-y-auto space-y-0.5">
-        <p className="px-5 mb-2 text-[10px] font-semibold tracking-wider
-          text-gray-400 dark:text-gray-600 uppercase">Main</p>
+        <p className="px-6 mb-2 text-[10px] font-semibold tracking-[0.06em] uppercase
+          text-[#86868b] dark:text-[#a1a1a6]">Main</p>
         {links.map(({ to, icon, label }) => (
           <NavItem key={to} to={to} icon={icon} label={label} onClick={onNavClick} />
         ))}
 
-        <div className="my-4 mx-4 h-px bg-gray-100 dark:bg-gray-800" />
-        <p className="px-5 mb-2 text-[10px] font-semibold tracking-wider
-          text-gray-400 dark:text-gray-600 uppercase">Account</p>
+        <div className="my-4 mx-4 h-px bg-[#e5e5ea] dark:bg-white/5" />
+        <p className="px-6 mb-2 text-[10px] font-semibold tracking-[0.06em] uppercase
+          text-[#86868b] dark:text-[#a1a1a6]">Account</p>
         {bottomLinks.map(({ to, icon, label }) => (
           <NavItem key={to} to={to} icon={icon} label={label} onClick={onNavClick} />
         ))}
       </nav>
 
-      {/* User + logout */}
-      <div className="border-t border-gray-100 dark:border-gray-800 p-4">
-        <div className="flex items-center gap-3 p-2 rounded-xl
-          hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600
-            flex items-center justify-center text-white text-xs font-bold shadow-md shrink-0"
+      {/* User + logout — refined glass pill */}
+      <div className="border-t border-[#e5e5ea] dark:border-white/5 p-3">
+        <div className="flex items-center gap-3 p-2 rounded-[10px]
+          hover:bg-black/[0.04] dark:hover:bg-white/5 transition-colors group">
+          <div className="w-8 h-8 rounded-full sidebar-brand-gradient
+            flex items-center justify-center text-white text-[11px] font-semibold shadow-sm shrink-0"
             aria-hidden="true">
             {(user?.name?.[0] || "U").toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold text-gray-900 dark:text-white truncate leading-none">
+            <p className="text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] truncate leading-none tracking-[-0.005em]">
               {user?.name || "User"}
             </p>
-            <p className="text-[11px] text-gray-400 truncate mt-0.5">{user?.email}</p>
+            <p className="text-[11px] text-[#86868b] dark:text-[#a1a1a6] truncate mt-1">{user?.email}</p>
           </div>
           <button onClick={onLogout}
-            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10
-              rounded-lg transition-all duration-150 opacity-0 group-hover:opacity-100"
+            className="p-1.5 text-[#86868b] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10
+              rounded-md transition-all duration-150 opacity-0 group-hover:opacity-100"
             aria-label="Logout">
             <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
         </div>
         <button onClick={onLogout}
-          className="mt-1 flex items-center gap-2 w-full px-2 py-1.5 rounded-lg
-            text-[12px] font-medium text-gray-400 hover:text-red-500
+          className="mt-1 flex items-center gap-2 w-full px-3 py-2 rounded-[10px]
+            text-[12px] font-medium text-[#6e6e73] dark:text-[#a1a1a6] hover:text-red-600 dark:hover:text-red-400
             hover:bg-red-50 dark:hover:bg-red-500/10
-            transition-all duration-150"
+            transition-colors duration-150"
           aria-label="Sign out">
           <LogOut className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
           <span>Sign out</span>
@@ -157,10 +161,8 @@ function MobileDrawer({ open, onClose, user, onLogout }) {
             initial={{ x: -260 }} animate={{ x: 0 }} exit={{ x: -260 }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
             role="dialog" aria-modal="true" aria-label="Navigation menu"
-            className="fixed inset-y-0 left-0 z-50 w-64
-              bg-white dark:bg-[#0d1117]
-              border-r border-gray-200 dark:border-gray-800
-              flex flex-col lg:hidden shadow-2xl">
+            className="fixed inset-y-0 left-0 z-50 w-64 glass-strong
+              flex flex-col lg:hidden">
             <div className="flex items-center justify-end px-4 py-3">
               <button onClick={onClose} className="btn-ghost p-1.5" aria-label="Close menu">
                 <X className="w-4 h-4" />
@@ -183,15 +185,13 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile toggle */}
+      {/* Mobile toggle — glass pill */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-30 p-2
-          bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700
-          text-gray-500 hover:text-gray-900 dark:hover:text-white
-          rounded-lg shadow-sm transition-colors"
+        className="lg:hidden fixed top-3 left-3 z-30 p-2 glass
+          text-[#1d1d1f] dark:text-[#f5f5f7]"
         aria-label="Open navigation">
-        <Menu className="w-4.5 h-4.5 w-[18px] h-[18px]" />
+        <Menu className="w-[18px] h-[18px]" />
       </button>
 
       <MobileDrawer
@@ -201,10 +201,8 @@ export default function Sidebar() {
         onLogout={logout}
       />
 
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:flex w-60 h-screen sticky top-0
-        bg-white dark:bg-[#0d1117]
-        border-r border-gray-200 dark:border-gray-800
+      {/* Desktop sidebar — true glass surface, sticky */}
+      <aside className="hidden lg:flex w-60 h-screen sticky top-0 glass
         flex-col shrink-0 z-30">
         <SidebarContent user={user} onLogout={logout} />
       </aside>
