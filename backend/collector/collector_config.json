@@ -1,0 +1,9 @@
+{
+    "api_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzkyOTk4MjE4fQ.Dw0lcJIPsI6O9EtpfPhCrU_eAB3jDKzs-q8MdE9YJHA",
+    "api_url": "http://127.0.0.1:8000",
+    "daemon": false,
+    "flush_interval": 15.0,
+    "offline_mode": false,
+    "online_predict": true,
+    "start_on_login": false
+}

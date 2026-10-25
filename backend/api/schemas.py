@@ -142,9 +142,9 @@ class DashboardResponse(BaseModel):
     label_distribution:  dict
     wpm_trend:           list
     feature_importance:  list
-    avg_wpm:             Optional[float] = None   # average WPM across recent behavior records
-    typing_events:       Optional[int]   = None   # total key presses in recent window
-    mouse_events:        Optional[int]   = None   # total mouse events in recent window
+    avg_wpm:             Optional[float] = None
+    typing_events:       Optional[int]   = None
+    mouse_events:        Optional[int]   = None
 
 
 class SessionOut(BaseModel):
@@ -208,11 +208,11 @@ class EndSessionResponse(BaseModel):
 # ── Reports ───────────────────────────────────────────────────────────────────
 
 class DailyReportEntry(BaseModel):
-    date:             str         # YYYY-MM-DD
-    sessions:         int
-    predictions:      int
-    avg_wpm:          float
-    dominant_load:    Optional[str]
+    date:              str         # YYYY-MM-DD
+    sessions:          int
+    predictions:       int
+    avg_wpm:           float
+    dominant_load:     Optional[str]
     load_distribution: dict
 
 
@@ -221,11 +221,11 @@ class DailyReportResponse(BaseModel):
 
 
 class WeeklyReportEntry(BaseModel):
-    week_start:       str         # YYYY-MM-DD (Monday)
-    sessions:         int
-    predictions:      int
-    avg_wpm:          float
-    dominant_load:    Optional[str]
+    week_start:        str         # YYYY-MM-DD (Monday)
+    sessions:          int
+    predictions:       int
+    avg_wpm:           float
+    dominant_load:     Optional[str]
     load_distribution: dict
 
 
@@ -258,8 +258,8 @@ class FeatureStatEntry(BaseModel):
 
 
 class AnalyticsFeaturesResponse(BaseModel):
-    stats:    list[FeatureStatEntry]
-    per_load: dict   # {low: {feature: mean}, medium: ..., high: ...}
+    stats:         list[FeatureStatEntry]
+    per_load:      dict   # {low: {feature: mean}, medium: ..., high: ...}
     total_records: int
 
 
@@ -310,10 +310,46 @@ class HistoryResponsePaginated(BaseModel):
 class ModelInfoResponse(BaseModel):
     version:    str
     type:       str
-    calibrated: Optional[bool]   = None
-    trained_at: Optional[str]    = None
-    accuracy:   Optional[float]  = None
-    cv_mean:    Optional[float]  = None
-    cv_std:     Optional[float]  = None
-    n_samples:  Optional[int]    = None
+    calibrated: Optional[bool]  = None
+    trained_at: Optional[str]   = None
+    accuracy:   Optional[float] = None
+    cv_mean:    Optional[float] = None
+    cv_std:     Optional[float] = None
+    n_samples:  Optional[int]   = None
     features:   list[str]
+
+
+# ── App Usage ─────────────────────────────────────────────────────────────────
+
+class AppUsageEntry(BaseModel):
+    process:      str
+    window_title: str   = ""
+    duration_sec: float
+
+
+class AppUsageBatchPayload(BaseModel):
+    """Sent by the collector once per flush window."""
+    usages: list[AppUsageEntry]
+
+
+class AppUsageOut(BaseModel):
+    id:           int
+    process:      str
+    window_title: str
+    duration_sec: float
+    recorded_at:  str
+
+    model_config = {"from_attributes": True}
+
+
+class AppUsageSummaryEntry(BaseModel):
+    process:           str
+    total_seconds:     float
+    percentage:        float   # 0–100, share of total tracked time
+    last_window_title: str
+
+
+class AppUsageSummaryResponse(BaseModel):
+    period_hours:  int
+    total_tracked: float       # total seconds across all apps
+    apps:          list[AppUsageSummaryEntry]

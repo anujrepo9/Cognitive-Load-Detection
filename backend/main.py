@@ -28,6 +28,7 @@ from routes import auth, behavior, prediction, dashboard, recommendation, sessio
 from routes import settings as settings_route
 from routes import model as model_route
 from routes import ws as ws_route
+from routes import app_usage as app_usage_route
 
 setup_logging()
 logger = get_logger(__name__)
@@ -85,16 +86,17 @@ app.add_middleware(
 # IMPORTANT: these are registered FIRST so FastAPI's router always matches
 # /api/* paths before the SPA catch-all middleware below ever runs.
 #
-app.include_router(auth.router,           prefix="/api")
-app.include_router(behavior.router,       prefix="/api")
-app.include_router(prediction.router,     prefix="/api")
-app.include_router(dashboard.router,      prefix="/api")
-app.include_router(recommendation.router, prefix="/api")
-app.include_router(session.router,        prefix="/api")
-app.include_router(reports.router,        prefix="/api")
-app.include_router(analytics.router,      prefix="/api")
-app.include_router(settings_route.router, prefix="/api")
-app.include_router(model_route.router,    prefix="/api")
+app.include_router(auth.router,             prefix="/api")
+app.include_router(behavior.router,         prefix="/api")
+app.include_router(prediction.router,       prefix="/api")
+app.include_router(dashboard.router,        prefix="/api")
+app.include_router(recommendation.router,   prefix="/api")
+app.include_router(session.router,          prefix="/api")
+app.include_router(reports.router,          prefix="/api")
+app.include_router(analytics.router,        prefix="/api")
+app.include_router(settings_route.router,   prefix="/api")
+app.include_router(model_route.router,      prefix="/api")
+app.include_router(app_usage_route.router,  prefix="/api")
 app.include_router(ws_route.router)
 
 # ── Health check ──────────────────────────────────────────────────────────────
@@ -108,16 +110,11 @@ def health():
 # In dev mode (python backend/start.py) this env var is NOT set, so this
 # whole block is skipped — Vite's dev server handles the frontend instead.
 #
-_static_dir = os.environ.get("COGNILOAD_STATIC_DIR", "")
+_static_dir  = os.environ.get("COGNILOAD_STATIC_DIR", "")
 _static_path = Path(_static_dir) if _static_dir else None
 
 if _static_path and _static_path.exists():
 
-    # Mount named sub-directories first (these take priority in Starlette).
-    # Wrap each mount in try/except: if the dist/ folder exists but is a
-    # partial/corrupted build (missing assets/ sub-dir), StaticFiles() would
-    # raise at startup and kill the backend — making ALL routes including
-    # /api/auth/register return connection errors instead of 404.
     _assets_dir = _static_path / "assets"
     if _assets_dir.exists():
         try:
@@ -133,28 +130,12 @@ if _static_path and _static_path.exists():
             logger.warning(f"Could not mount /icons — skipping: {_e}")
 
     # ── SPA catch-all via Starlette middleware ────────────────────────────────
-    #
-    # WHY MIDDLEWARE and not @app.get("/{full_path:path}")?
-    #
-    # FastAPI's path-param route  /{full_path:path}  is added to the SAME
-    # router as the /api/* routes.  In some Starlette versions the catch-all
-    # wins over specific routes because it is matched first by the path-param
-    # regex — causing /api/auth/register to return index.html (HTTP 200 HTML)
-    # instead of running the register handler, which the browser reports as a
-    # 404 because it expects JSON.
-    #
-    # Starlette middleware runs BEFORE route matching, so we intercept here:
-    #   • If the path starts with /api, /docs, /health, /assets, /icons
-    #     → do nothing; let FastAPI route it normally.
-    #   • Otherwise serve the matching file from dist/ or fall back to
-    #     index.html so React Router handles client-side navigation.
-    #
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.responses import Response
 
     _API_PREFIXES = (
-        "/api/",        # all REST routes  (with trailing slash)
-        "/api",         # exact /api root and /api?... queries (no trailing slash)
+        "/api/",
+        "/api",
         "/docs",
         "/health",
         "/assets/",
@@ -166,26 +147,18 @@ if _static_path and _static_path.exists():
         async def dispatch(self, request: Request, call_next):
             path = request.url.path
 
-            # Let all API and asset paths pass through unchanged.
-            # Check both startswith AND exact equality so /api itself is never
-            # intercepted, which would return index.html and the browser would
-            # silently report the JSON-parse failure as a 404.
             if any(path.startswith(p) for p in _API_PREFIXES) or path == "/api":
                 return await call_next(request)
 
-            # Try to serve the exact file from dist/ (JS chunks, CSS, etc.)
-            # Strip leading slash for Path resolution
             rel = path.lstrip("/") or "index.html"
             candidate = _static_path / rel
             if candidate.exists() and candidate.is_file():
                 return FileResponse(str(candidate))
 
-            # Anything else → index.html (React Router handles the route)
             index = _static_path / "index.html"
             if index.exists():
                 return FileResponse(str(index))
 
-            # dist not found
             return JSONResponse(
                 {"error": "Frontend not built. Run: cd frontend && npm run build"},
                 status_code=503,

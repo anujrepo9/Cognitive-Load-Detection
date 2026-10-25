@@ -517,3 +517,28 @@ export async function call(command, args = {}) {
 
   throw new Error(`[CogniLoad api.js] Unmapped HTTP command: "${command}". Add it to HTTP_MAP.`)
 }
+// ── App Usage API ─────────────────────────────────────────────────────────────
+
+export const appUsageAPI = {
+  /**
+   * Fetch aggregated per-app foreground time for the given lookback window.
+   * @param {number} hours - lookback window in hours (default 24)
+   * @returns {Promise<AppUsageSummaryResponse>}
+   */
+  summary: (hours = 24) =>
+    universalCall(
+      "get_app_usage_summary", { hours },
+      "GET", `/app-usage/summary?hours=${hours}`, undefined,
+    ),
+
+  /**
+   * Fetch raw timeline log entries.
+   * @param {number} hours
+   * @param {number} limit
+   */
+  timeline: (hours = 8, limit = 200) =>
+    universalCall(
+      "get_app_usage_timeline", { hours, limit },
+      "GET", `/app-usage/timeline?hours=${hours}&limit=${limit}`, undefined,
+    ),
+}

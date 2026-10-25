@@ -105,7 +105,7 @@ class Prediction(Base):
 
     id           = Column(Integer, primary_key=True, index=True)
     session_id   = Column(Integer, ForeignKey("sessions.id"), nullable=False)
-    behavior_id  = Column(Integer, ForeignKey("behavior_data.id"), nullable=True)  # linked behavior
+    behavior_id  = Column(Integer, ForeignKey("behavior_data.id"), nullable=True)
     load_level   = Column(String(10), nullable=False)   # low | medium | high
     confidence   = Column(Float,      nullable=False)
     raw_scores   = Column(Text,       nullable=True)    # JSON string {low:.., medium:.., high:..}
@@ -120,12 +120,30 @@ class Prediction(Base):
 class UserSettings(Base):
     __tablename__ = "user_settings"
 
-    id                   = Column(Integer, primary_key=True, index=True)
-    user_id              = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
-    tracking_enabled     = Column(Boolean, default=True)
-    flush_interval_sec   = Column(Integer, default=15)
-    notifications_enabled= Column(Boolean, default=True)
-    theme                = Column(String(20), default="system")   # light | dark | system
-    updated_at           = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    id                    = Column(Integer, primary_key=True, index=True)
+    user_id               = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    tracking_enabled      = Column(Boolean, default=True)
+    flush_interval_sec    = Column(Integer, default=15)
+    notifications_enabled = Column(Boolean, default=True)
+    theme                 = Column(String(20), default="system")   # light | dark | system
+    updated_at            = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     user = relationship("User", back_populates="settings")
+
+
+# ── App Usage Log ─────────────────────────────────────────────────────────────
+
+class AppUsageLog(Base):
+    """One row = one app's foreground time for a single flush window."""
+    __tablename__ = "app_usage_logs"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    user_id       = Column(Integer, ForeignKey("users.id"), nullable=False)
+    session_id    = Column(Integer, ForeignKey("sessions.id"), nullable=True)
+    process       = Column(String(120), nullable=False, index=True)   # e.g. "Code.exe"
+    window_title  = Column(String(512), nullable=True)                # last seen title
+    duration_sec  = Column(Float, nullable=False, default=0.0)        # seconds in foreground
+    recorded_at   = Column(DateTime(timezone=True), default=utcnow, index=True)
+
+    user    = relationship("User")
+    session = relationship("Session")

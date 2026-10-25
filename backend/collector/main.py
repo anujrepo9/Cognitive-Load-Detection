@@ -9,6 +9,7 @@ Pipeline:
         → metrics.calculate()
         → CSVWriter.write()          (local dataset)
         → PushQueue + API.send()     (offline-buffered live prediction)
+        → AppUsage API.send()        (per-app foreground duration)
 
 Usage:
     python main.py                          # default config
@@ -96,8 +97,7 @@ def send_rows_to_api(rows: list, cfg: CollectorConfig) -> tuple[list, list]:
     for row in rows:
         payload = build_payload(row)
         try:
-            resp = requests.post(url, json=payload,
-                                 headers=headers, timeout=5)
+            resp = requests.post(url, json=payload, headers=headers, timeout=5)
             if resp.status_code in (200, 201):
                 successes.append(row)
             elif resp.status_code == 401:
@@ -120,6 +120,33 @@ def send_rows_to_api(rows: list, cfg: CollectorConfig) -> tuple[list, list]:
     if failures:
         print(f"  [api] {len(failures)} row(s) failed, queued for retry", flush=True)
     return successes, failures
+
+
+def send_app_usage_to_api(durations: list, cfg: CollectorConfig) -> None:
+    """POST per-app foreground durations to /api/app-usage for the current flush window."""
+    if not durations:
+        return
+    headers = {"Content-Type": "application/json"}
+    if cfg.api_token:
+        headers["Authorization"] = f"Bearer {cfg.api_token}"
+
+    url = f"{cfg.api_url.rstrip('/')}/app-usage"
+    payload = {
+        "usages": [
+            {
+                "process":      d.process,
+                "window_title": d.window_title,
+                "duration_sec": round(d.duration_sec, 2),
+            }
+            for d in durations
+        ]
+    }
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=5)
+        if resp.status_code not in (200, 201):
+            print(f"  [api] app-usage HTTP {resp.status_code}: {resp.text[:120]}", flush=True)
+    except requests.RequestException as exc:
+        print(f"  [api] app-usage request failed: {exc}", flush=True)
 
 
 def print_row(row: dict):
@@ -166,15 +193,17 @@ def flush_loop(
         # Attach most-recent active window info (from window_events in state)
         if state.window_events:
             last = state.window_events[-1]
-            row["active_window"] = last.title
+            row["active_window"]  = last.title
             row["active_process"] = last.process
         elif win_tracker is not None:
-            # tracker holds the last known window even if it didn't change
-            row["active_window"] = getattr(win_tracker, "_last_title", "") or ""
-            row["active_process"] = getattr(win_tracker, "_last_proc", "") or ""
+            row["active_window"]  = getattr(win_tracker, "_last_title", "") or ""
+            row["active_process"] = getattr(win_tracker, "_last_proc",  "") or ""
         else:
-            row["active_window"] = ""
+            row["active_window"]  = ""
             row["active_process"] = ""
+
+        # Drain per-app durations from the tracker for this flush window
+        app_durations = win_tracker.drain_app_durations() if win_tracker else []
 
         if with_label:
             print()
@@ -182,6 +211,16 @@ def flush_loop(
 
         csv_writer.write(row)
         print_row(row)
+
+        # Print top apps to console
+        if app_durations:
+            top = sorted(app_durations, key=lambda d: d.duration_sec, reverse=True)
+            print(
+                "  [apps] " + ", ".join(
+                    f"{d.process}={d.duration_sec:.1f}s" for d in top[:5]
+                ),
+                flush=True,
+            )
 
         if cfg.offline_mode:
             queue.push(build_payload(row))
@@ -191,6 +230,8 @@ def flush_loop(
             _, failures = send_rows_to_api(pending, cfg)
             if failures:
                 queue.retry_failed(failures)
+            # Send app usage (best-effort — not queued on failure)
+            send_app_usage_to_api(app_durations, cfg)
 
         window_start = now
 
@@ -262,8 +303,8 @@ def main(argv=None):
     if args.api_url   is not None: cfg.api_url = args.api_url
     if args.token     is not None: cfg.api_token = args.token
     else: cfg.api_token = cfg.api_token or secure_store.load_token()
-    if args.offline:       cfg.offline_mode = True
-    if args.daemon:        cfg.daemon = True
+    if args.offline:        cfg.offline_mode = True
+    if args.daemon:         cfg.daemon = True
     if args.start_on_login: cfg.start_on_login = True
     if args.online_predict: cfg.online_predict = True
 

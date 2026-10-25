@@ -19,6 +19,7 @@ import EmptyState from "../components/ui/EmptyState"
 import { SkeletonPage } from "../components/ui/Skeleton"
 import TrackingControls from "../components/tracking/TrackingControls"
 import TrackingStatus from "../components/tracking/TrackingStatus"
+import AppUsagePanel from "../components/AppUsagePanel"
 
 const loadColors  = { low: "#37D9A0", medium: "#FFB547", high: "#FF5364" }
 const loadDetails = {
@@ -439,6 +440,11 @@ export default function Dashboard() {
             </div>
           )}
         </motion.div>
+      {/* ── App Usage Panel ── */}
+      <div className="px-4 pb-6 sm:px-6">
+        <AppUsagePanel hours={24} />
+      </div>
+
       </div>
     </div>
   )

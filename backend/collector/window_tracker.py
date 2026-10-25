@@ -3,26 +3,36 @@ window_tracker.py — Tracks the active window title + process name system-wide.
 
 Polls every 0.5 s and emits a WindowFocusEvent into the buffer whenever the
 active window changes.  Supported platforms:
-  - Windows  : win32gui / win32process
+  - Windows  : ctypes (no pywin32 required)
   - macOS    : AppKit / Quartz
-  - Linux/X11: xprop / wmctrl (subprocess fallback)
+  - Linux/X11: xdotool / xprop (subprocess fallback)
 
-Import and start this alongside KeyboardListener / MouseListener in main.py.
+Also accumulates per-process foreground duration within the current flush
+window and exposes it via drain_app_durations().
 """
 
 import sys
 import time
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from collections import defaultdict
 
 
-# ── Data class ────────────────────────────────────────────────────────────────
+# ── Data classes ──────────────────────────────────────────────────────────────
 
 @dataclass
 class WindowFocusEvent:
     title:      str
     process:    str
     timestamp:  float          # epoch ms
+
+
+@dataclass
+class AppDuration:
+    """Accumulated foreground-time for one process within a flush window."""
+    process:       str
+    window_title:  str         # last seen title for this process
+    duration_sec:  float       # total seconds in focus during this window
 
 
 # ── Platform helpers ──────────────────────────────────────────────────────────
@@ -62,7 +72,7 @@ def _get_active_window_mac():
         ws = NSWorkspace.sharedWorkspace()
         app = ws.frontmostApplication()
         process = app.localizedName() or "unknown"
-        title = process   # window title needs Quartz — process name is enough
+        title = process
         try:
             import Quartz
             wins = Quartz.CGWindowListCopyWindowInfo(
@@ -85,7 +95,6 @@ def _get_active_window_linux():
     """Return (title, process_name) on Linux via xdotool / xprop (subprocess)."""
     import subprocess
     try:
-        # xdotool is the most reliable single tool
         wid = subprocess.check_output(
             ["xdotool", "getactivewindow"], stderr=subprocess.DEVNULL
         ).decode().strip()
@@ -141,10 +150,12 @@ class WindowTracker:
     Polls the OS for the active window at POLL_INTERVAL_S intervals.
     On every change it:
       1. Emits a WindowFocusEvent into the EventBuffer.
-      2. Calls an optional on_change callback(title, process).
+      2. Accumulates per-process foreground duration.
+      3. Calls an optional on_change callback(title, process).
 
+    Call drain_app_durations() at each flush to get and reset the
+    accumulated durations for the current window period.
     The buffer is expected to have an add_window_focus(event) method.
-    If it doesn't (older buffer), events are silently dropped.
     """
 
     def __init__(self, buffer, on_change=None):
@@ -152,8 +163,16 @@ class WindowTracker:
         self._on_change  = on_change
         self._last_title = None
         self._last_proc  = None
+        self._last_ts    = time.time()          # when current app became active
         self._stop       = threading.Event()
-        self._thread     = threading.Thread(target=self._run, name="window-tracker", daemon=True)
+        self._lock       = threading.Lock()
+        # process -> AppDuration accumulator for the current flush window
+        self._durations: dict[str, AppDuration] = defaultdict(
+            lambda: AppDuration(process="", window_title="", duration_sec=0.0)
+        )
+        self._thread = threading.Thread(
+            target=self._run, name="window-tracker", daemon=True
+        )
 
     def start(self):
         self._thread.start()
@@ -162,22 +181,52 @@ class WindowTracker:
         self._stop.set()
         self._thread.join(timeout=2)
 
+    def drain_app_durations(self) -> list:
+        """
+        Return the accumulated per-app durations since the last drain (or start),
+        then reset the accumulators for the next flush window.
+        Called by the flush loop at each interval.
+        """
+        now = time.time()
+        with self._lock:
+            # Credit any still-active app up to now
+            if self._last_proc:
+                elapsed = now - self._last_ts
+                acc = self._durations[self._last_proc]
+                acc.process = self._last_proc
+                acc.window_title = self._last_title or ""
+                acc.duration_sec += elapsed
+            self._last_ts = now  # reset the ongoing timer
+
+            result = [v for v in self._durations.values() if v.duration_sec > 0.0]
+            self._durations.clear()
+            return result
+
     def _run(self):
         while not self._stop.is_set():
             try:
                 title, process = _get_active_window()
                 if title != self._last_title or process != self._last_proc:
-                    self._last_title = title
-                    self._last_proc  = process
+                    now = time.time()
+                    with self._lock:
+                        # Credit the outgoing app
+                        if self._last_proc:
+                            elapsed = now - self._last_ts
+                            acc = self._durations[self._last_proc]
+                            acc.process = self._last_proc
+                            acc.window_title = self._last_title or ""
+                            acc.duration_sec += elapsed
+                        self._last_ts    = now
+                        self._last_title = title
+                        self._last_proc  = process
+
                     ev = WindowFocusEvent(
                         title=title,
                         process=process,
-                        timestamp=time.time() * 1000,
+                        timestamp=now * 1000,
                     )
-                    # Push to buffer if supported
                     if hasattr(self._buf, "add_window_focus"):
                         self._buf.add_window_focus(ev)
-                    # Call optional hook (e.g. for logging / CSV)
                     if self._on_change:
                         self._on_change(title, process)
             except Exception:

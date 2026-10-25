@@ -158,8 +158,7 @@ htmlcov/
 # ============================================================
 models/hand_landmarker.task
 
-# Old Python backend (deleted)
-backend/
+
 
 # Old sidecar runtime data (deleted)
 sidecars/
