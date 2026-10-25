@@ -1,3 +1,8 @@
+// Always dark — cyberpunk theme is dark-only, remove any stored light preference
+document.documentElement.classList.add("dark")
+document.documentElement.classList.remove("light")
+localStorage.setItem("theme", "dark")
+
 import { StrictMode, Component } from "react"
 import { createRoot } from "react-dom/client"
 import "./index.css"
@@ -5,9 +10,6 @@ import App from "./App"
 import { ThemeProvider } from "./context/ThemeContext"
 
 // ── Error Boundary ────────────────────────────────────────────────────────────
-// React 18 in production silently unmounts the entire tree on any render error,
-// leaving a blank screen with no feedback. This catches the crash, shows the
-// error on screen (so you can read it without DevTools), and logs it to console.
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props)
@@ -53,11 +55,10 @@ class ErrorBoundary extends Component {
 const container = document.getElementById("root")
 
 if (!container) {
-  // If even #root is missing the page is broken at the HTML level
   document.body.innerHTML =
     '<div style="padding:32px;font-family:monospace;color:red">' +
-    'ERROR: #root element not found. Check index.html.' +
-    '</div>'
+    "ERROR: #root element not found. Check index.html." +
+    "</div>"
 } else {
   createRoot(container).render(
     <StrictMode>

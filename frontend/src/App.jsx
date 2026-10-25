@@ -24,12 +24,7 @@ function ProtectedLayout() {
 
   return (
     <TrackingProvider>
-      {/* Canvas background is set on <body> via index.css — no need for an
-       * explicit bg-* utility here. Keeping the surface transparent lets the
-       * refined radial-gradient on body show through, which is part of the
-       * new design language. Works the same in browser (Vite dev server,
-       * uvicorn-served build) and Tauri webview. */}
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen" style={{ background: "#05080D" }}>
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <TopNav />
@@ -57,8 +52,8 @@ export default function App() {
           <BrowserRouter>
             <a href="#main-content"
               className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999]
-                focus:px-4 focus:py-2 focus:bg-indigo-600 focus:text-white focus:rounded-xl
-                focus:shadow-lg focus:text-sm focus:font-semibold">
+                focus:px-4 focus:py-2 focus:rounded-xl focus:shadow-lg focus:text-sm focus:font-semibold"
+              style={{ background: "#00D9E8", color: "#05080D" }}>
               Skip to main content
             </a>
             <Routes>

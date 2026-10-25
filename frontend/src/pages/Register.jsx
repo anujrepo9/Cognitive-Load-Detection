@@ -1,14 +1,13 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { motion } from "framer-motion"
-import { BrainCircuit, User, Mail, Lock, Loader2, AlertCircle, Eye, EyeOff, Sparkles } from "lucide-react"
+import { BrainCircuit, User, Mail, Lock, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react"
 import { authAPI, getErrorMessage } from "../services/api"
 import { useAuth } from "../context/AuthContext"
 
 export default function Register() {
   const navigate = useNavigate()
   const { login } = useAuth()
-
   const [name,     setName]     = useState("")
   const [email,    setEmail]    = useState("")
   const [password, setPassword] = useState("")
@@ -18,92 +17,67 @@ export default function Register() {
 
   const strength = password.length === 0 ? 0 : password.length < 6 ? 1 : password.length < 10 ? 2 : 3
   const strengthLabel = ["", "Weak", "Fair", "Strong"]
-  const strengthColor = ["", "bg-red-400", "bg-amber-400", "bg-emerald-500"]
+  const strengthColors = ["", "#FF5364", "#FFB547", "#37D9A0"]
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!name || !email || !password) { setError("Please fill in all fields."); return }
     if (password.length < 6) { setError("Password must be at least 6 characters."); return }
-    setLoading(true)
-    setError(null)
+    setLoading(true); setError(null)
     try {
       const result = await authAPI.register({ name, email, password })
       login(result.user, result.access_token, result.refresh_token)
       navigate("/dashboard")
     } catch (err) {
       setError(getErrorMessage(err, "Registration failed. Please try again."))
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }
 
   return (
-    <div className="min-h-screen flex bg-gray-50 dark:bg-[#080b14]">
-      {/* Left decorative panel */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden
-        bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-700">
-        <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute bottom-20 left-0 w-72 h-72 rounded-full bg-indigo-900/40 blur-3xl" />
-        <div className="relative z-10 flex flex-col justify-center px-16 text-white">
-          <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20
-            flex items-center justify-center mb-8">
-            <BrainCircuit className="w-7 h-7 text-white" />
-          </div>
-          <h2 className="text-4xl font-bold leading-tight mb-4">
-            Start understanding<br />how you work.
-          </h2>
-          <p className="text-indigo-200 text-lg leading-relaxed max-w-sm">
-            Join CogniLoad and start tracking your cognitive load in real time.
-            Your data stays private — always.
-          </p>
-          <div className="mt-10 grid grid-cols-2 gap-4">
-            {[
-              { val: "~99%", lbl: "Model accuracy" },
-              { val: "5s", lbl: "Prediction interval" },
-              { val: "0%", lbl: "Content recorded" },
-              { val: "Live", lbl: "WebSocket updates" },
-            ].map(({ val, lbl }) => (
-              <div key={lbl} className="bg-white/10 rounded-xl p-4 border border-white/10">
-                <div className="text-2xl font-bold">{val}</div>
-                <div className="text-xs text-indigo-200 mt-0.5">{lbl}</div>
-              </div>
-            ))}
+    <div className="min-h-screen flex items-center justify-center px-6 py-12" style={{ background: "#05080D" }}>
+      {/* Ambient glows */}
+      <div className="fixed top-0 left-0 w-96 h-96 pointer-events-none"
+        style={{ background: "radial-gradient(ellipse, rgba(0,217,232,0.06) 0%, transparent 70%)", filter: "blur(60px)" }} />
+      <div className="fixed bottom-0 right-0 w-64 h-64 pointer-events-none"
+        style={{ background: "radial-gradient(ellipse, rgba(119,117,255,0.06) 0%, transparent 70%)", filter: "blur(48px)" }} />
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="w-full max-w-sm relative z-10">
+
+        {/* Brand */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-2.5 mb-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ background: "linear-gradient(135deg, #00D9E8, #00BFA6)", boxShadow: "0 0 20px rgba(0,217,232,0.40)" }}>
+              <BrainCircuit className="w-5 h-5" style={{ color: "#05080D" }} />
+            </div>
+            <span className="text-xl font-bold" style={{ color: "#EAF2F8" }}>
+              Cogni<span style={{ color: "#00D9E8" }}>Load</span>
+            </span>
           </div>
         </div>
-      </div>
 
-      {/* Form */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="w-full max-w-sm">
-
-          <div className="lg:hidden text-center mb-8">
-            <div className="inline-flex items-center gap-2.5 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600
-                flex items-center justify-center shadow-lg shadow-indigo-500/30">
-                <BrainCircuit className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold text-gray-900 dark:text-white">
-                Cogni<span className="text-indigo-500">Load</span>
-              </span>
-            </div>
-          </div>
-
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create your account</h1>
-            <p className="text-gray-500 dark:text-gray-400 mt-1.5">Start monitoring your cognitive load</p>
+        {/* Card */}
+        <div className="p-8 rounded-2xl"
+          style={{
+            background: "#0B1420",
+            border: "1px solid rgba(100,170,190,0.14)",
+            boxShadow: "0 24px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,217,232,0.05)",
+          }}>
+          <div className="mb-7">
+            <h2 className="text-2xl font-bold" style={{ color: "#EAF2F8" }}>Create account</h2>
+            <p className="text-sm mt-1.5" style={{ color: "#8493A7" }}>Start monitoring your cognitive load</p>
           </div>
 
           {error && (
             <motion.div
               initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
               role="alert"
-              className="flex items-start gap-2.5 rounded-xl bg-red-50 dark:bg-red-900/20
-                border border-red-200 dark:border-red-800
-                px-4 py-3 text-sm text-red-700 dark:text-red-400 mb-5">
+              className="flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm mb-5"
+              style={{ background: "rgba(255,83,100,0.10)", border: "1px solid rgba(255,83,100,0.25)", color: "#FF5364" }}>
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <span>{error}</span>
             </motion.div>
@@ -111,23 +85,19 @@ export default function Register() {
 
           <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Full name
-              </label>
+              <label htmlFor="name" className="block text-sm font-medium mb-1.5" style={{ color: "#8493A7" }}>Full name</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "#536477" }} />
                 <input id="name" type="text" autoComplete="name"
                   value={name} onChange={(e) => setName(e.target.value)}
-                  className="input pl-9" placeholder="Ada Lovelace" aria-required="true" />
+                  className="input pl-9" placeholder="Your name" aria-required="true" />
               </div>
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Email address
-              </label>
+              <label htmlFor="email" className="block text-sm font-medium mb-1.5" style={{ color: "#8493A7" }}>Email address</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "#536477" }} />
                 <input id="email" type="email" autoComplete="email"
                   value={email} onChange={(e) => setEmail(e.target.value)}
                   className="input pl-9" placeholder="you@example.com" aria-required="true" />
@@ -135,33 +105,32 @@ export default function Register() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Password
-              </label>
+              <label htmlFor="password" className="block text-sm font-medium mb-1.5" style={{ color: "#8493A7" }}>Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "#536477" }} />
                 <input id="password" type={showPwd ? "text" : "password"} autoComplete="new-password"
                   value={password} onChange={(e) => setPassword(e.target.value)}
-                  className="input pl-9 pr-10" placeholder="••••••••" aria-required="true" />
+                  className="input pl-9 pr-10" placeholder="Min. 6 characters" aria-required="true" />
                 <button type="button" onClick={() => setShowPwd(!showPwd)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400
-                    hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
+                  style={{ color: "#536477" }}
+                  onMouseEnter={e => e.currentTarget.style.color = "#00D9E8"}
+                  onMouseLeave={e => e.currentTarget.style.color = "#536477"}
                   aria-label={showPwd ? "Hide password" : "Show password"}>
                   {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
               {password.length > 0 && (
-                <div className="mt-2 flex items-center gap-2">
-                  <div className="flex gap-1 flex-1">
-                    {[1,2,3].map((i) => (
-                      <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-300
-                        ${i <= strength ? strengthColor[strength] : "bg-gray-200 dark:bg-gray-700"}`} />
+                <div className="mt-2">
+                  <div className="flex gap-1 mb-1">
+                    {[1, 2, 3].map((s) => (
+                      <div key={s} className="h-1 flex-1 rounded-full transition-all duration-300"
+                        style={{ background: strength >= s ? strengthColors[strength] : "rgba(100,170,190,0.12)" }} />
                     ))}
                   </div>
-                  <span className={`text-[11px] font-medium
-                    ${strength === 1 ? "text-red-500" : strength === 2 ? "text-amber-500" : "text-emerald-500"}`}>
+                  <p className="text-[11px]" style={{ color: strengthColors[strength] || "#536477" }}>
                     {strengthLabel[strength]}
-                  </span>
+                  </p>
                 </div>
               )}
             </div>
@@ -175,14 +144,14 @@ export default function Register() {
             </button>
           </form>
 
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
+          <p className="text-center text-sm mt-6" style={{ color: "#536477" }}>
             Already have an account?{" "}
-            <Link to="/login" className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">
+            <Link to="/login" className="font-semibold transition-colors" style={{ color: "#00D9E8" }}>
               Sign in
             </Link>
           </p>
-        </motion.div>
-      </div>
+        </div>
+      </motion.div>
     </div>
   )
 }

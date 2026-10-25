@@ -1,45 +1,17 @@
-import { motion } from "framer-motion"
+import { Inbox } from "lucide-react"
 
-/**
- * Empty state — softer, more elegant. Replaced the square box with a
- * circular soft-tinted icon well + a refined layout. Removed the heavy
- * hairline border that read as "data table empty cell".
- */
-export default function EmptyState({
-  icon: Icon,
-  title,
-  description,
-  action,
-  className = "",
-  tone = "neutral",   // "neutral" | "primary"
-}) {
-  const iconWell = tone === "primary"
-    ? "bg-indigo-50/70 dark:bg-indigo-500/10 text-indigo-500 dark:text-indigo-300"
-    : "bg-[#f5f5f7]/80 dark:bg-white/5 text-[#86868b] dark:text-[#a1a1a6]"
-
+export default function EmptyState({ icon: Icon = Inbox, title = "No data yet", description = "", action }) {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.25 }}
-      className={`flex flex-col items-center justify-center text-center
-        py-14 px-6 ${className}`}
-    >
-      {Icon && (
-        <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${iconWell}`}>
-          <Icon className="w-5 h-5" aria-hidden="true" />
-        </div>
-      )}
-      <h3 className="text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] mb-1 tracking-[-0.005em]">
-        {title}
-      </h3>
+    <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+      <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+        style={{ background: "rgba(0,217,232,0.08)", border: "1px solid rgba(0,217,232,0.15)" }}>
+        <Icon className="w-6 h-6" style={{ color: "#00D9E8" }} aria-hidden="true" />
+      </div>
+      <p className="text-base font-semibold mb-1" style={{ color: "#EAF2F8" }}>{title}</p>
       {description && (
-        <p className="text-[13px] text-[#86868b] dark:text-[#a1a1a6]
-          max-w-xs mb-5 leading-relaxed">
-          {description}
-        </p>
+        <p className="text-sm max-w-xs" style={{ color: "#8493A7" }}>{description}</p>
       )}
-      {action}
-    </motion.div>
+      {action && <div className="mt-5">{action}</div>}
+    </div>
   )
 }

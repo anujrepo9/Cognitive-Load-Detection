@@ -1,45 +1,12 @@
 import { motion } from "framer-motion"
 import { TrendingUp, TrendingDown } from "lucide-react"
 
-/* Refined palette per accent. We removed the loud top-gradient bar — it read
- * as a generic admin template. Instead each accent uses a soft, monochrome
- * tinted chip and a 2px left accent stripe that fades in on hover. */
 const accentConfig = {
-  primary: {
-    chipBg:    "bg-indigo-50 dark:bg-indigo-500/10",
-    chipColor: "text-indigo-600 dark:text-indigo-300",
-    stripe:    "bg-indigo-500",
-    trendPos:  "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10",
-    trendNeg:  "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10",
-  },
-  accent: {
-    chipBg:    "bg-violet-50 dark:bg-violet-500/10",
-    chipColor: "text-violet-600 dark:text-violet-300",
-    stripe:    "bg-violet-500",
-    trendPos:  "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10",
-    trendNeg:  "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10",
-  },
-  success: {
-    chipBg:    "bg-emerald-50 dark:bg-emerald-500/10",
-    chipColor: "text-emerald-600 dark:text-emerald-300",
-    stripe:    "bg-emerald-500",
-    trendPos:  "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10",
-    trendNeg:  "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10",
-  },
-  warning: {
-    chipBg:    "bg-amber-50 dark:bg-amber-500/10",
-    chipColor: "text-amber-600 dark:text-amber-300",
-    stripe:    "bg-amber-500",
-    trendPos:  "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10",
-    trendNeg:  "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10",
-  },
-  danger: {
-    chipBg:    "bg-red-50 dark:bg-red-500/10",
-    chipColor: "text-red-600 dark:text-red-300",
-    stripe:    "bg-red-500",
-    trendPos:  "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10",
-    trendNeg:  "text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-500/10",
-  },
+  primary: { iconBg: "rgba(0,217,232,0.10)", iconColor: "#00D9E8", iconBorder: "rgba(0,217,232,0.20)", glowColor: "rgba(0,217,232,0.08)" },
+  accent:  { iconBg: "rgba(119,117,255,0.10)", iconColor: "#7775FF", iconBorder: "rgba(119,117,255,0.20)", glowColor: "rgba(119,117,255,0.08)" },
+  success: { iconBg: "rgba(55,217,160,0.10)", iconColor: "#37D9A0", iconBorder: "rgba(55,217,160,0.20)", glowColor: "rgba(55,217,160,0.08)" },
+  warning: { iconBg: "rgba(255,181,71,0.10)", iconColor: "#FFB547", iconBorder: "rgba(255,181,71,0.20)", glowColor: "rgba(255,181,71,0.08)" },
+  danger:  { iconBg: "rgba(255,83,100,0.10)", iconColor: "#FF5364", iconBorder: "rgba(255,83,100,0.20)", glowColor: "rgba(255,83,100,0.08)" },
 }
 
 export default function StatCard({
@@ -53,60 +20,70 @@ export default function StatCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, delay, ease: [0.22, 1, 0.36, 1] }}
-      className={`card-hover p-5 relative overflow-hidden group ${className}`}
-    >
-      {/* Left accent stripe — appears on hover only, very subtle */}
-      <span
-        aria-hidden="true"
-        className={`absolute left-0 top-4 bottom-4 w-[2px] rounded-full ${cfg.stripe}
-          opacity-0 group-hover:opacity-100 transition-opacity duration-200`}
+      className={`relative overflow-hidden group rounded-xl p-5 ${className}`}
+      style={{
+        background: "#0B1420",
+        border: "1px solid rgba(100,170,190,0.14)",
+        transition: "border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease",
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = "rgba(0,217,232,0.22)"
+        e.currentTarget.style.boxShadow = `0 8px 32px rgba(0,0,0,0.4), 0 0 16px ${cfg.glowColor}`
+        e.currentTarget.style.transform = "translateY(-1px)"
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = "rgba(100,170,190,0.14)"
+        e.currentTarget.style.boxShadow = ""
+        e.currentTarget.style.transform = ""
+      }}>
+
+      {/* Left accent bar */}
+      <span aria-hidden="true"
+        className="absolute left-0 top-3 bottom-3 w-[2px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+        style={{ background: cfg.iconColor, boxShadow: `0 0 8px ${cfg.iconColor}` }}
       />
 
-      <div className="flex items-start justify-between gap-3 relative">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-medium tracking-wide uppercase
-            text-[#86868b] dark:text-[#a1a1a6] mb-3">
+          <p className="text-[10px] font-semibold tracking-[0.10em] uppercase mb-3"
+            style={{ color: "#536477" }}>
             {label}
           </p>
-          <p className="font-rounded text-[1.75rem] font-semibold tracking-[-0.022em]
-            text-[#1d1d1f] dark:text-[#f5f5f7] leading-none nums">
+          <p className="text-[1.75rem] font-bold tracking-[-0.022em] leading-none nums"
+            style={{ color: "#EAF2F8" }}>
             {value}
             {unit && (
-              <span className="ml-1 text-[0.875rem] font-medium text-[#86868b] dark:text-[#a1a1a6]">
-                {unit}
-              </span>
+              <span className="ml-1 text-[0.875rem] font-medium" style={{ color: "#8493A7" }}>{unit}</span>
             )}
           </p>
         </div>
         {Icon && (
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${cfg.chipBg}
-            transition-transform duration-200 group-hover:scale-[1.04]`}>
-            <Icon className={`w-[18px] h-[18px] ${cfg.chipColor}`} aria-hidden="true" />
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-[1.06]"
+            style={{ background: cfg.iconBg, border: `1px solid ${cfg.iconBorder}` }}>
+            <Icon className="w-[18px] h-[18px]" style={{ color: cfg.iconColor }} aria-hidden="true" />
           </div>
         )}
       </div>
 
       {(sub || trend != null) && (
-        <div className="flex items-center gap-2 mt-3 relative">
+        <div className="flex items-center gap-2 mt-3">
           {trend != null && (
-            <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-md
-              ${trend >= 0 ? cfg.trendPos : cfg.trendNeg}`}>
-              {trend >= 0
-                ? <TrendingUp className="w-3 h-3" />
-                : <TrendingDown className="w-3 h-3" />}
+            <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-md"
+              style={trend >= 0
+                ? { background: "rgba(55,217,160,0.12)", color: "#37D9A0", border: "1px solid rgba(55,217,160,0.20)" }
+                : { background: "rgba(255,83,100,0.12)", color: "#FF5364", border: "1px solid rgba(255,83,100,0.20)" }}>
+              {trend >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
               {Math.abs(trend)}%
             </span>
           )}
           {sub && (
-            <span className="text-[11px] text-[#86868b] dark:text-[#a1a1a6] truncate">
-              {sub}
-            </span>
+            <span className="text-[11px] truncate" style={{ color: "#8493A7" }}>{sub}</span>
           )}
         </div>
       )}
 
       {delta != null && (
-        <p className="text-[11px] text-[#86868b] dark:text-[#a1a1a6] mt-1 nums">
+        <p className="text-[11px] mt-1 nums" style={{ color: "#8493A7" }}>
           {delta >= 0 ? "+" : ""}{delta} vs last period
         </p>
       )}

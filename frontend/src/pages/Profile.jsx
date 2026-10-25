@@ -59,8 +59,8 @@ export default function Profile() {
   return (
     <div className="p-4 lg:p-6 space-y-6">
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Profile</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Manage your account information</p>
+        <h1 className="text-2xl font-bold text-[#EAF2F8]">Profile</h1>
+        <p className="text-sm text-[#8493A7] mt-0.5">Manage your account information</p>
       </motion.div>
 
       {/* Profile card */}
@@ -72,8 +72,8 @@ export default function Profile() {
             {(name[0] || "U").toUpperCase()}
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{name || "User"}</h2>
-            <p className="text-sm text-gray-400">{email}</p>
+            <h2 className="text-lg font-semibold text-[#EAF2F8]">{name || "User"}</h2>
+            <p className="text-sm text-[#536477]">{email}</p>
           </div>
         </div>
 
@@ -98,11 +98,11 @@ export default function Profile() {
         <form onSubmit={handleSave} noValidate className="space-y-4">
           <div>
             <label htmlFor="profile-name"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              className="block text-sm font-medium text-[#EAF2F8] mb-1.5">
               Full name
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#536477]" />
               <input id="profile-name" type="text" value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="input pl-9" placeholder="Your name" aria-required="true" />
@@ -111,11 +111,11 @@ export default function Profile() {
 
           <div>
             <label htmlFor="profile-email"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              className="block text-sm font-medium text-[#EAF2F8] mb-1.5">
               Email address
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#536477]" />
               <input id="profile-email" type="email" value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="input pl-9" placeholder="you@example.com" aria-required="true" />
@@ -139,7 +139,7 @@ export default function Profile() {
           <div className="w-9 h-9 rounded-xl bg-warning/10 flex items-center justify-center">
             <KeyRound className="w-5 h-5 text-warning" />
           </div>
-          <h3 className="font-semibold text-gray-900 dark:text-white">Change password</h3>
+          <h3 className="font-semibold text-[#EAF2F8]">Change password</h3>
         </div>
 
         {pwdErr && (
@@ -162,7 +162,7 @@ export default function Profile() {
         <form onSubmit={handleChangePassword} noValidate className="space-y-4">
           <div>
             <label htmlFor="old-password"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              className="block text-sm font-medium text-[#EAF2F8] mb-1.5">
               Current password
             </label>
             <div className="relative">
@@ -171,7 +171,7 @@ export default function Profile() {
                 className="input pr-10" placeholder="••••••••" autoComplete="current-password"
                 aria-required="true" />
               <button type="button" onClick={() => setShowOld(!showOld)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#536477] hover:text-gray-600"
                 aria-label={showOld ? "Hide password" : "Show password"}>
                 {showOld ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -180,9 +180,9 @@ export default function Profile() {
 
           <div>
             <label htmlFor="new-password"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              className="block text-sm font-medium text-[#EAF2F8] mb-1.5">
               New password
-              <span className="ml-1 text-xs text-gray-400 font-normal">(min. 6 characters)</span>
+              <span className="ml-1 text-xs text-[#536477] font-normal">(min. 6 characters)</span>
             </label>
             <div className="relative">
               <input id="new-password" type={showNew ? "text" : "password"}
@@ -190,7 +190,7 @@ export default function Profile() {
                 className="input pr-10" placeholder="••••••••" autoComplete="new-password"
                 aria-required="true" />
               <button type="button" onClick={() => setShowNew(!showNew)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#536477] hover:text-gray-600"
                 aria-label={showNew ? "Hide password" : "Show password"}>
                 {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>

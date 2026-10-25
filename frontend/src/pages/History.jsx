@@ -77,8 +77,8 @@ export default function History() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
         className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Session history</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          <h1 className="text-2xl font-bold" style={{ color: "#EAF2F8" }}>Session history</h1>
+          <p className="text-sm mt-0.5" style={{ color: "#8493A7" }}>
             All past monitoring sessions — each row is one continuous tracking period
           </p>
         </div>

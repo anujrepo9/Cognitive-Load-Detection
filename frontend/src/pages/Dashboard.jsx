@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from "react"
 import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
 import {
-  Activity, BarChart3, RotateCcw, BrainCircuit, TrendingUp,
+  Activity, BarChart3, BrainCircuit, TrendingUp,
   Clock, Cpu, MousePointerClick, Keyboard, Calendar, WifiOff,
+  Zap, Target,
 } from "lucide-react"
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -19,11 +20,11 @@ import { SkeletonPage } from "../components/ui/Skeleton"
 import TrackingControls from "../components/tracking/TrackingControls"
 import TrackingStatus from "../components/tracking/TrackingStatus"
 
-const loadColors  = { low: "#34c759", medium: "#ff9f0a", high: "#ff3b30" }
+const loadColors  = { low: "#37D9A0", medium: "#FFB547", high: "#FF5364" }
 const loadDetails = {
-  low:    { label: "Low",    color: "#34c759", desc: "Comfortable focus pace — your effort is sustainable." },
-  medium: { label: "Medium", color: "#ff9f0a", desc: "Steady but engaged — keep an eye on sustained effort." },
-  high:   { label: "High",   color: "#ff3b30", desc: "Close to overload — consider a short recovery break." },
+  low:    { label: "Low",    color: "#37D9A0", desc: "Comfortable focus pace — your effort is sustainable." },
+  medium: { label: "Medium", color: "#FFB547", desc: "Steady but engaged — keep an eye on sustained effort." },
+  high:   { label: "High",   color: "#FF5364", desc: "Close to overload — consider a short recovery break." },
 }
 
 function formatDuration(seconds) {
@@ -34,26 +35,36 @@ function formatDuration(seconds) {
   return `${m}m ${s.toString().padStart(2, "0")}s`
 }
 
-/* Mini metric tile — used inside the hero's right panel (2×2 grid).
- * Slimmer than a full StatCard so four of them fit cleanly without
- * competing with the gauge for attention. */
+// Cyberpunk tooltip style
+const tooltipStyle = {
+  background: "rgba(9,15,24,0.95)",
+  border: "1px solid rgba(0,217,232,0.22)",
+  borderRadius: 10,
+  fontSize: 12,
+  color: "#EAF2F8",
+  boxShadow: "0 8px 24px rgba(0,0,0,0.5), 0 0 12px rgba(0,217,232,0.08)",
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+  padding: "8px 12px",
+  fontFamily: "'Space Grotesk', 'Inter', system-ui",
+}
+
+// Mini metric tile inside the gauge hero panel
 function MiniMetric({ icon: Icon, label, value, delay = 0 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, delay, ease: [0.22, 1, 0.36, 1] }}
-      className="rounded-xl border border-[#e5e5ea]/70 dark:border-white/5
-        bg-white/60 dark:bg-white/[0.03] p-3.5">
+      className="rounded-xl p-3.5"
+      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(100,170,190,0.10)" }}>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <Icon className="w-3.5 h-3.5 text-[#86868b] dark:text-[#a1a1a6]" aria-hidden="true" />
-        <span className="text-[10px] font-medium uppercase tracking-[0.06em]
-          text-[#86868b] dark:text-[#a1a1a6]">
+        <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: "#536477" }} aria-hidden="true" />
+        <span className="text-[10px] font-semibold tracking-[0.08em] uppercase" style={{ color: "#536477" }}>
           {label}
         </span>
       </div>
-      <p className="text-[1.125rem] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]
-        nums tracking-[-0.018em] leading-none">
+      <p className="text-[1.125rem] font-bold leading-none nums" style={{ color: "#EAF2F8" }}>
         {value}
       </p>
     </motion.div>
@@ -74,7 +85,6 @@ export default function Dashboard() {
   const [predictions,  setPredictions]  = useState(0)
   const [modelInfo,    setModelInfo]    = useState(null)
 
-  // Session timer — survives page navigation (component remount).
   const mountElapsed = (
     session?.start_time && trackingState === "tracking"
       ? Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 1000))
@@ -88,9 +98,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (trackingState === "idle") {
-      localTimerStartRef.current = null
-      baseSecondsRef.current     = 0
-      setElapsed(0)
+      localTimerStartRef.current = null; baseSecondsRef.current = 0; setElapsed(0)
     }
   }, [trackingState])
 
@@ -109,13 +117,10 @@ export default function Dashboard() {
     return () => clearInterval(tick)
   }, [session?.session_id, trackingState])
 
-  // React to WebSocket prediction pushes
   useEffect(() => {
     if (!prediction) return
     const { load_level, confidence: conf } = prediction
-    setLoadLevel(load_level)
-    setConfidence(conf)
-    setLastUpdated(new Date())
+    setLoadLevel(load_level); setConfidence(conf); setLastUpdated(new Date())
     setPredictions((p) => p + 1)
     setHistory((prev) => [
       ...prev.slice(-29),
@@ -124,20 +129,18 @@ export default function Dashboard() {
   }, [prediction])
 
   useAuthFetch(() => {
-    Promise.allSettled([
-      dashboardAPI.overview(),
-      modelAPI.info(),
-    ]).then(([statsRes, modelRes]) => {
-      if (statsRes.status === "fulfilled") setStats(statsRes.value)
-      if (modelRes.status === "fulfilled") setModelInfo(modelRes.value)
-    }).finally(() => setLoading(false))
+    Promise.allSettled([dashboardAPI.overview(), modelAPI.info()])
+      .then(([statsRes, modelRes]) => {
+        if (statsRes.status === "fulfilled") setStats(statsRes.value)
+        if (modelRes.status === "fulfilled") setModelInfo(modelRes.value)
+      }).finally(() => setLoading(false))
   }, [])
 
   const counts = { low: 0, medium: 0, high: 0 }
   history.forEach((h) => { if (counts[h.level] != null) counts[h.level]++ })
 
   const currentConf = confidence ? Math.round(confidence * 100) : 0
-  const gaugeColor  = loadColors[loadLevel] || "#6366f1"
+  const gaugeColor  = loadColors[loadLevel] || "#00D9E8"
   const loadDesc    = loadDetails[loadLevel]?.desc || "Waiting for first prediction — start tracking to see live insights."
   const loadLabel   = loadDetails[loadLevel]?.label || "Unknown"
 
@@ -146,173 +149,168 @@ export default function Dashboard() {
   const wsConnected = wsStatus === "connected" || wsStatus === "native"
 
   return (
-    <div className="p-4 lg:p-6 space-y-6">
+    <div className="p-4 lg:p-6 space-y-5">
 
-      {/* ===== 1. Compact header — title + WS status + controls ===== */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5 mb-1">
-            <h1 className="text-[1.625rem] font-semibold tracking-[-0.024em]
-              text-[#1d1d1f] dark:text-[#f5f5f7] leading-tight">
-              {user?.name?.split(" ")[0] ? `Welcome back, ${user.name.split(" ")[0]}` : "Cognitive Dashboard"}
-            </h1>
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
-              text-[11px] font-semibold transition-colors
-              ${wsConnected
-                ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30"
-                : "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30"}`}
-              role="status" aria-live="polite">
-              {wsConnected ? (
-                <>
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full
-                      rounded-full bg-emerald-500 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-                  </span>
-                  Live
-                </>
-              ) : (
-                <><WifiOff className="w-3 h-3" /> {wsStatus}</>
-              )}
+          <div className="flex items-center gap-2 mb-1">
+            <span className="live-dot w-1.5 h-1.5 rounded-full" style={{ background: "#00D9E8" }} />
+            <span className="text-[10px] font-semibold tracking-[0.10em] uppercase" style={{ color: "#536477" }}>
+              AI Command Center
             </span>
           </div>
-          <p className="text-[13px] text-[#6e6e73] dark:text-[#a1a1a6]">
-            Your cognitive workload in real time — stay balanced.
+          <h1 style={{ color: "#EAF2F8" }}>
+            Welcome back, {user?.name?.split(" ")[0] || "Operator"}
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: "#8493A7" }}>
+            Real-time cognitive load monitoring via behavioral signal analysis
           </p>
         </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => { setHistory([]); setPredictions(0) }}
-            className="btn-secondary text-[13px] py-1.5">
-            <RotateCcw className="w-3.5 h-3.5" /> Reset
-          </button>
-          <TrackingControls />
+        <div className="flex items-center gap-3 shrink-0">
+          <TrackingStatus />
+          <TrackingControls compact />
         </div>
       </div>
 
-      {/* ===== 2. Tracking status ===== */}
-      <TrackingStatus />
-
-      {/* ===== 3. HERO BAND — Cognitive Load Gauge (focal point) =====
-       *  Layout: gauge on the left (~40%), AI status + 2×2 mini-metrics on
-       *  the right (~60%). The previously separate "Current load" and
-       *  "Confidence" stat cards are removed — the gauge already shows both.
-       *  The remaining "Sessions today" and "Avg load today" cards are
-       *  folded into the hero's mini-metric grid so the page reads as
-       *  one focused unit instead of gauge + redundant cards + chart.
-       */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-        className="card p-6 lg:p-8 relative overflow-hidden"
-      >
-        {/* Ambient glow — only behind the gauge, very restrained */}
-        <div
-          aria-hidden="true"
-          className="absolute -left-12 top-1/2 -translate-y-1/2 w-72 h-72 rounded-full
-            blur-3xl pointer-events-none opacity-50"
-          style={{ background: `radial-gradient(circle, ${gaugeColor}40 0%, transparent 70%)` }}
-        />
-
-        <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-8 items-center">
-
-          {/* Gauge — the focal point (left, ~40%) */}
-          <div className="lg:col-span-2 flex flex-col items-center justify-center">
-            <ProgressRing
-              value={currentConf}
-              size={260}
-              strokeWidth={16}
-              color={gaugeColor}
-              loadLevel={loadLevel}
-              label={
-                <>
-                  <span className="font-rounded text-[3.25rem] font-semibold leading-none
-                    text-[#1d1d1f] dark:text-[#f5f5f7] nums tracking-[-0.028em]">
-                    {currentConf}
-                    <span className="text-[1.75rem] text-[#86868b] dark:text-[#a1a1a6] font-medium ml-0.5">%</span>
-                  </span>
-                  <span className="text-[11px] font-medium uppercase tracking-[0.08em]
-                    text-[#86868b] dark:text-[#a1a1a6] mt-1">Confidence</span>
-                </>
-              }
-              sublabel={
-                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2">
-                  <LoadBadge level={loadLevel} animate={trackingState === "tracking"} />
+      {/* ── Stat row ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          {
+            label: "Current Load", accent: "primary",
+            icon: BrainCircuit,
+            value: wsConnected && loadLevel !== "unknown" ? loadLabel : "—",
+            sub: wsConnected ? "Live signal" : "Not tracking",
+          },
+          {
+            label: "Session Duration", accent: "success",
+            icon: Clock,
+            value: elapsed > 0 ? formatDuration(elapsed) : "—",
+            sub: trackingState === "tracking" ? "Active" : "Idle",
+          },
+          {
+            label: "Predictions", accent: "warning",
+            icon: Target,
+            value: predictions > 0 ? predictions : (stats?.total_predictions ?? "—"),
+            sub: "This session",
+          },
+          {
+            label: "Avg WPM", accent: "accent",
+            icon: Keyboard,
+            value: stats?.avg_wpm ?? "—",
+            sub: "Typing speed",
+          },
+        ].map(({ label, icon: Icon, value, sub, accent }, i) => {
+          const cfg = {
+            primary: { iconBg: "rgba(0,217,232,0.10)", iconColor: "#00D9E8", iconBorder: "rgba(0,217,232,0.20)" },
+            success: { iconBg: "rgba(55,217,160,0.10)", iconColor: "#37D9A0", iconBorder: "rgba(55,217,160,0.20)" },
+            warning: { iconBg: "rgba(255,181,71,0.10)", iconColor: "#FFB547", iconBorder: "rgba(255,181,71,0.20)" },
+            accent:  { iconBg: "rgba(119,117,255,0.10)", iconColor: "#7775FF", iconBorder: "rgba(119,117,255,0.20)" },
+          }[accent]
+          return (
+            <motion.div key={label}
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.32, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] }}
+              className="rounded-xl p-5 group relative overflow-hidden"
+              style={{ background: "#0B1420", border: "1px solid rgba(100,170,190,0.14)", transition: "border-color 0.2s, box-shadow 0.2s, transform 0.2s" }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(0,217,232,0.22)"; e.currentTarget.style.transform = "translateY(-1px)" }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(100,170,190,0.14)"; e.currentTarget.style.transform = "" }}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold tracking-[0.10em] uppercase mb-3" style={{ color: "#536477" }}>{label}</p>
+                  <p className="text-[1.75rem] font-bold leading-none nums" style={{ color: "#EAF2F8" }}>{value}</p>
                 </div>
-              }
-            />
-          </div>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: cfg.iconBg, border: `1px solid ${cfg.iconBorder}` }}>
+                  <Icon className="w-[18px] h-[18px]" style={{ color: cfg.iconColor }} />
+                </div>
+              </div>
+              <p className="text-[11px] mt-2" style={{ color: "#8493A7" }}>{sub}</p>
+            </motion.div>
+          )
+        })}
+      </div>
 
-          {/* Right panel — AI status + 2×2 mini-metrics (~60%) */}
-          <div className="lg:col-span-3 space-y-5">
-            {/* AI status heading */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <BrainCircuit className="w-4 h-4 text-indigo-500 dark:text-indigo-300" aria-hidden="true" />
-              <h2 className="text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]
-                uppercase tracking-[0.06em]">
-                AI Status
-              </h2>
-              <span className="text-[11px] text-[#86868b] dark:text-[#a1a1a6]">·</span>
-              <span className="text-[11px] text-[#86868b] dark:text-[#a1a1a6]">
-                {loadLabel} load detected
-              </span>
-              {lastUpdated && (
-                <span className="ml-auto text-[11px] text-[#86868b] dark:text-[#a1a1a6] nums">
-                  Last update {lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              )}
-            </div>
+      {/* ── Hero row: gauge + signals ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
 
-            <p className="text-[14px] leading-relaxed text-[#6e6e73] dark:text-[#a1a1a6]
-              max-w-md">
-              {loadDesc}
-            </p>
-
-            {/* 2×2 mini-metrics — Tracked | Predictions | Sessions today | Avg load today */}
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <MiniMetric icon={Clock}     label="Tracked"        value={formatDuration(elapsed)} delay={0.05} />
-              <MiniMetric icon={Activity}  label="Predictions"    value={predictions}            delay={0.10} />
-              <MiniMetric icon={Calendar}  label="Sessions today" value={stats?.sessions_today ?? 0} delay={0.15} />
-              <MiniMetric icon={BarChart3} label="Avg load today" value={stats?.avg_load ?? "—"}  delay={0.20} />
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* ===== 4. Main grid — Live chart (2/3) + Session overview (1/3) =====
-       *  Chart now gets the full left column (no Load distribution below it),
-       *  so it becomes the clean secondary focal point after the gauge.
-       */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-
-        {/* Live confidence chart */}
+        {/* Gauge panel */}
         <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+          className="rounded-xl p-6 xl:col-span-1 flex flex-col items-center relative overflow-hidden"
+          style={{ background: "#0B1420", border: "1px solid rgba(100,170,190,0.14)" }}>
+
+          {/* Ambient radial glow behind gauge */}
+          <div className="absolute inset-0 pointer-events-none" aria-hidden="true"
+            style={{
+              background: `radial-gradient(ellipse at 50% 40%, ${gaugeColor}14 0%, transparent 65%)`,
+            }} />
+
+          <p className="text-[10px] font-semibold tracking-[0.10em] uppercase mb-4 self-start" style={{ color: "#536477" }}>
+            Live Cognitive Load
+          </p>
+
+          <ProgressRing
+            value={currentConf}
+            size={200}
+            strokeWidth={12}
+            color={gaugeColor}
+            loadLevel={loadLevel}
+            label={`${currentConf}%`}
+            sublabel={loadLabel}
+            showTicks={true}
+          />
+
+          <LoadBadge level={loadLevel} animate={wsConnected} className="mt-4" />
+
+          <p className="text-center text-[12px] mt-3 leading-relaxed max-w-[200px]" style={{ color: "#8493A7" }}>
+            {loadDesc}
+          </p>
+
+          {lastUpdated && (
+            <p className="text-[10px] mt-2" style={{ color: "#536477" }}>
+              Updated {lastUpdated.toLocaleTimeString()}
+            </p>
+          )}
+
+          {!wsConnected && (
+            <div className="mt-4 flex items-center gap-2 text-[11px] font-medium px-3 py-1.5 rounded-full"
+              style={{ background: "rgba(255,83,100,0.10)", border: "1px solid rgba(255,83,100,0.20)", color: "#FF5364" }}>
+              <WifiOff className="w-3 h-3" />
+              Not connected
+            </div>
+          )}
+
+          {/* 2x2 mini metrics */}
+          <div className="grid grid-cols-2 gap-2 w-full mt-4">
+            <MiniMetric icon={Clock}           label="Duration" value={elapsed > 0 ? formatDuration(elapsed) : "—"} delay={0.1} />
+            <MiniMetric icon={Zap}             label="Signals"  value={predictions}  delay={0.12} />
+            <MiniMetric icon={MousePointerClick} label="Clicks" value={quality?.totalMouse ?? stats?.mouse_events ?? "—"} delay={0.14} />
+            <MiniMetric icon={Keyboard}        label="Keys"     value={quality?.totalKeys ?? stats?.typing_events ?? "—"} delay={0.16} />
+          </div>
+        </motion.div>
+
+        {/* Confidence chart */}
+        <motion.div
+          initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-          className="card p-5 xl:col-span-2"
-        >
-          <div className="flex items-center justify-between mb-4">
+          className="rounded-xl p-5 xl:col-span-2"
+          style={{ background: "#0B1420", border: "1px solid rgba(100,170,190,0.14)" }}>
+
+          <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-indigo-50/80 dark:bg-indigo-500/12
-                flex items-center justify-center">
-                <Activity className="w-[18px] h-[18px] text-indigo-500 dark:text-indigo-300" />
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                style={{ background: "rgba(0,217,232,0.10)", border: "1px solid rgba(0,217,232,0.20)" }}>
+                <Activity className="w-[18px] h-[18px]" style={{ color: "#00D9E8" }} />
               </div>
               <div>
-                <h3 className="text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]
-                  tracking-[-0.005em]">
-                  Confidence over time
-                </h3>
-                <p className="text-[11px] text-[#86868b] dark:text-[#a1a1a6] mt-0.5">
-                  Real-time WebSocket push
-                </p>
+                <h3 className="text-[13px] font-semibold" style={{ color: "#EAF2F8" }}>Confidence over time</h3>
+                <p className="text-[11px] mt-0.5" style={{ color: "#8493A7" }}>Real-time WebSocket predictions</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium
-                text-[#6e6e73] dark:text-[#a1a1a6]">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium" style={{ color: "#8493A7" }}>
                 <span className="w-2 h-2 rounded-full" style={{ background: gaugeColor }} /> Confidence
               </span>
               <LoadBadge level={loadLevel} />
@@ -320,167 +318,128 @@ export default function Dashboard() {
           </div>
 
           {history.length < 2 ? (
-            <EmptyState
-              icon={Activity}
-              title="No live data yet"
-              description="Start typing or moving the mouse to generate predictions."
-              tone="primary"
-            />
+            <EmptyState icon={Activity} title="No live data yet"
+              description="Start typing or moving the mouse to generate predictions." />
           ) : (
-            <ResponsiveContainer width="100%" height={280}>
+            <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={history} margin={{ top: 6, right: 4, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="confGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%"   stopColor={gaugeColor} stopOpacity={0.28} />
+                    <stop offset="0%"   stopColor={gaugeColor} stopOpacity={0.30} />
                     <stop offset="100%" stopColor={gaugeColor} stopOpacity={0}    />
                   </linearGradient>
                 </defs>
-                <CartesianGrid
-                  strokeDasharray="0"
-                  stroke="rgba(120,120,128,0.12)"
-                  vertical={false}
-                />
+                <CartesianGrid strokeDasharray="0" stroke="rgba(100,170,190,0.08)" vertical={false} />
                 <XAxis dataKey="time"
-                  tick={{ fontSize: 11, fill: "#86868b" }}
+                  tick={{ fontSize: 11, fill: "#536477", fontFamily: "'Space Grotesk', system-ui" }}
                   axisLine={false} tickLine={false} dy={8} />
                 <YAxis domain={[0, 100]}
-                  tick={{ fontSize: 11, fill: "#86868b" }}
+                  tick={{ fontSize: 11, fill: "#536477", fontFamily: "'Space Grotesk', system-ui" }}
                   axisLine={false} tickLine={false}
                   tickFormatter={(v) => `${v}%`} width={42} />
-                <Tooltip
-                  contentStyle={{
-                    background: "rgba(255,255,255,0.85)",
-                    border: "1px solid rgba(255,255,255,0.6)",
-                    borderRadius: 12,
-                    fontSize: 12,
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.10), 0 0 0 0.5px rgba(0,0,0,0.04)",
-                    backdropFilter: "blur(20px) saturate(180%)",
-                    WebkitBackdropFilter: "blur(20px) saturate(180%)",
-                    color: "#1d1d1f",
-                    padding: "8px 12px",
-                  }}
-                  labelStyle={{ color: "#6e6e73", fontSize: 11, marginBottom: 2 }}
-                  itemStyle={{ color: "#1d1d1f", fontSize: 12, fontWeight: 600 }}
+                <Tooltip contentStyle={tooltipStyle}
+                  labelStyle={{ color: "#8493A7", fontSize: 11, marginBottom: 2 }}
+                  itemStyle={{ color: gaugeColor, fontSize: 12, fontWeight: 600 }}
                   formatter={(v) => [`${v}%`, "Confidence"]}
-                  cursor={{ stroke: gaugeColor, strokeOpacity: 0.3, strokeWidth: 1 }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="score"
-                  stroke={gaugeColor}
-                  strokeWidth={1.75}
+                  cursor={{ stroke: gaugeColor, strokeOpacity: 0.3, strokeWidth: 1 }} />
+                <Area type="monotone" dataKey="score"
+                  stroke={gaugeColor} strokeWidth={2}
                   fill="url(#confGrad)"
-                  isAnimationActive={true}
-                  animationDuration={500}
-                  activeDot={{
-                    r: 4,
-                    fill: gaugeColor,
-                    stroke: "#fff",
-                    strokeWidth: 2,
-                  }}
-                />
+                  isAnimationActive={true} animationDuration={500}
+                  activeDot={{ r: 4, fill: gaugeColor, stroke: "#0B1420", strokeWidth: 2 }} />
               </AreaChart>
             </ResponsiveContainer>
           )}
         </motion.div>
+      </div>
 
-        {/* Session overview — right column (1/3) */}
+      {/* ── Bottom row: session + load distribution ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+
+        {/* Session overview */}
         <motion.div
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-          className="card p-5"
-        >
-          <h3 className="text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] mb-4 tracking-[-0.005em]">
-            Session overview
-          </h3>
-          <div className="space-y-1">
+          className="rounded-xl p-5"
+          style={{ background: "#0B1420", border: "1px solid rgba(100,170,190,0.14)" }}>
+          <h3 className="text-[13px] font-semibold mb-4" style={{ color: "#EAF2F8" }}>Session Overview</h3>
+          <div className="space-y-0.5">
             {[
-              { icon: Keyboard,           label: "Typing events", value: quality?.totalKeys > 0 ? quality.totalKeys : (stats?.typing_events ?? "—") },
-              { icon: MousePointerClick,  label: "Mouse clicks",  value: quality?.totalMouse > 0 ? quality.totalMouse : (stats?.mouse_events ?? "—") },
-              { icon: Cpu,                label: "Avg WPM",       value: stats?.avg_wpm        ?? "—" },
-              { icon: BrainCircuit,       label: "Model version", value: modelInfo?.version ? `v${modelInfo.version}` : "rule-based" },
+              { icon: Keyboard,          label: "Typing events", value: quality?.totalKeys ?? stats?.typing_events ?? "—" },
+              { icon: MousePointerClick, label: "Mouse clicks",  value: quality?.totalMouse ?? stats?.mouse_events ?? "—" },
+              { icon: Cpu,               label: "Avg WPM",       value: stats?.avg_wpm ?? "—" },
+              { icon: BrainCircuit,      label: "Model version", value: modelInfo?.version ? `v${modelInfo.version}` : "rule-based" },
+              { icon: Calendar,          label: "Session ID",    value: session?.session_id ? `#${session.session_id}` : "—" },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label}
-                className="flex items-center justify-between py-2.5
-                  border-b border-[#f5f5f7] dark:border-white/5 last:border-0">
+                className="flex items-center justify-between py-2.5"
+                style={{ borderBottom: "1px solid rgba(100,170,190,0.07)" }}>
                 <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-lg bg-[#f5f5f7] dark:bg-white/5
-                    flex items-center justify-center">
-                    <Icon className="w-3.5 h-3.5 text-[#86868b] dark:text-[#a1a1a6]" />
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(100,170,190,0.10)" }}>
+                    <Icon className="w-3.5 h-3.5" style={{ color: "#536477" }} />
                   </div>
-                  <span className="text-[13px] text-[#6e6e73] dark:text-[#a1a1a6]">{label}</span>
+                  <span className="text-[13px]" style={{ color: "#8493A7" }}>{label}</span>
                 </div>
-                <span className="text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] nums">
-                  {value}
-                </span>
+                <span className="text-[13px] font-semibold nums" style={{ color: "#EAF2F8" }}>{value}</span>
               </div>
             ))}
           </div>
         </motion.div>
+
+        {/* Load distribution */}
+        <motion.div
+          initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="rounded-xl p-5 xl:col-span-2"
+          style={{ background: "#0B1420", border: "1px solid rgba(100,170,190,0.14)" }}>
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ background: "rgba(119,117,255,0.10)", border: "1px solid rgba(119,117,255,0.20)" }}>
+              <TrendingUp className="w-[18px] h-[18px]" style={{ color: "#7775FF" }} />
+            </div>
+            <div>
+              <h3 className="text-[13px] font-semibold" style={{ color: "#EAF2F8" }}>Load Distribution</h3>
+              <p className="text-[11px] mt-0.5" style={{ color: "#8493A7" }}>This session</p>
+            </div>
+          </div>
+
+          {history.length === 0 ? (
+            <EmptyState icon={BarChart3} title="No data yet"
+              description="Detected load levels will appear here as you work." />
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              {Object.entries(counts).map(([level, count]) => {
+                const pct = Math.round((count / history.length) * 100)
+                const col = loadColors[level]
+                return (
+                  <div key={level} className="rounded-xl p-4 text-center"
+                    style={{ background: `${col}0A`, border: `1px solid ${col}25` }}>
+                    <div className="flex items-center justify-center gap-1.5 mb-2">
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: col }} />
+                      <span className="text-[11px] font-semibold capitalize" style={{ color: col }}>
+                        {level}
+                      </span>
+                    </div>
+                    <p className="text-[2rem] font-bold nums leading-none" style={{ color: "#EAF2F8" }}>{pct}%</p>
+                    <p className="text-[11px] mt-1.5" style={{ color: "#8493A7" }}>
+                      {count} reading{count === 1 ? "" : "s"}
+                    </p>
+                    <div className="mt-3 h-1 rounded-full overflow-hidden" style={{ background: "rgba(100,170,190,0.10)" }}>
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                        className="h-full rounded-full"
+                        style={{ background: col, boxShadow: `0 0 8px ${col}60` }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </motion.div>
       </div>
-
-      {/* ===== 5. Load distribution — full width at the bottom =====
-       *  Moved out of the left column so the chart gets full vertical
-       *  space above. Acts as a session summary band at the foot of the page.
-       */}
-      <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
-        className="card p-5"
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-9 h-9 rounded-xl bg-violet-50/80 dark:bg-violet-500/12
-            flex items-center justify-center">
-            <TrendingUp className="w-[18px] h-[18px] text-violet-500 dark:text-violet-300" />
-          </div>
-          <div>
-            <h3 className="text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] tracking-[-0.005em]">
-              Load distribution
-            </h3>
-            <p className="text-[11px] text-[#86868b] dark:text-[#a1a1a6] mt-0.5">This session</p>
-          </div>
-        </div>
-
-        {history.length === 0 ? (
-          <EmptyState icon={BarChart3} title="No data yet"
-            description="Detected load levels will appear here as you work." />
-        ) : (
-          <div className="grid grid-cols-3 gap-4 max-w-3xl">
-            {Object.entries(counts).map(([level, value]) => {
-              const pct = Math.round((value / history.length) * 100)
-              return (
-                <div key={level}
-                  className="rounded-xl border border-[#e5e5ea]/70 dark:border-white/5
-                    bg-white/50 dark:bg-white/[0.03] p-4 text-center">
-                  <div className="flex items-center justify-center gap-1.5 mb-2">
-                    <span className="w-1.5 h-1.5 rounded-full"
-                      style={{ background: loadColors[level] }} />
-                    <span className="text-[11px] font-medium capitalize text-[#6e6e73] dark:text-[#a1a1a6]">
-                      {level}
-                    </span>
-                  </div>
-                  <p className="text-[1.625rem] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] nums tracking-[-0.022em] leading-none">
-                    {pct}%
-                  </p>
-                  <p className="text-[11px] text-[#86868b] dark:text-[#a1a1a6] mt-1.5">
-                    {value} reading{value === 1 ? "" : "s"}
-                  </p>
-                  <div className="mt-3 h-1.5 rounded-full bg-[#f5f5f7] dark:bg-white/5 overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-                      className="h-full rounded-full"
-                      style={{ background: loadColors[level] }} />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </motion.div>
     </div>
   )
 }
