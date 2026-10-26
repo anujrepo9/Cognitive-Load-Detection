@@ -1,17 +1,17 @@
 import { useState } from "react"
 import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
-import { Download, Loader2, AlertCircle } from "lucide-react"
-import { reportsAPI, getErrorMessage } from "../services/api"
+import { Download, Loader2, AlertCircle, Monitor, Clock } from "lucide-react"
+import { reportsAPI, appUsageAPI, getErrorMessage } from "../services/api"
 import { Tabs, TabPanel } from "../components/ui/Tabs"
 import { PageHeader } from "../components/ui/PageHeader"
 import LoadBadge from "../components/ui/LoadBadge"
 
-/* Refined helper components — same data, polished presentation. */
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
 function DateLabel({ date, prefix = "" }) {
   return (
-    <span className="text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7]
-      tracking-[-0.005em]">
+    <span className="text-[13px] font-semibold text-[#1d1d1f] dark:text-[#f5f5f7] tracking-[-0.005em]">
       {prefix}{date}
     </span>
   )
@@ -33,6 +33,24 @@ function LoadShare({ k, v }) {
     </span>
   )
 }
+
+function fmtSeconds(sec) {
+  if (!sec || sec <= 0) return "0s"
+  if (sec < 60)   return `${Math.round(sec)}s`
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${Math.round(sec % 60)}s`
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  return `${h}h ${m}m`
+}
+
+// Colour palette for app usage bars — cycles
+const APP_COLORS = [
+  "#00D9E8", "#37D9A0", "#FFB547", "#FF5364",
+  "#A78BFA", "#60A5FA", "#34D399", "#F472B6",
+  "#FBBF24", "#818CF8",
+]
+
+// ── Tab content components ────────────────────────────────────────────────────
 
 function DailyTab({ days }) {
   if (!days.length) return (
@@ -104,19 +122,154 @@ function WeeklyTab({ weeks }) {
   )
 }
 
+function AppUsageTab({ data, loading, error, onRefresh }) {
+  const [lookback, setLookback] = useState(24)
+
+  if (loading) return (
+    <div className="flex justify-center py-16">
+      <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#00D9E8" }} />
+    </div>
+  )
+
+  if (error) return (
+    <div role="alert"
+      className="rounded-xl border border-red-200/70 dark:border-red-500/25
+        bg-red-50/70 dark:bg-red-500/10 px-4 py-3 text-[13px]
+        text-red-700 dark:text-red-300 flex gap-2 items-center">
+      <AlertCircle className="w-4 h-4 shrink-0" /> {error}
+    </div>
+  )
+
+  if (!data || !data.apps?.length) return (
+    <div className="text-center py-16">
+      <Monitor className="w-8 h-8 mx-auto mb-3 opacity-30" style={{ color: "#00D9E8" }} />
+      <p className="text-[13px] text-[#86868b] dark:text-[#a1a1a6]">
+        No app usage data yet — start a tracking session to see results.
+      </p>
+    </div>
+  )
+
+  const totalTracked = data.total_tracked || 0
+  const apps = data.apps || []
+
+  return (
+    <div className="space-y-4">
+
+      {/* Summary bar */}
+      <div className="flex flex-wrap items-center gap-4 px-1">
+        <div className="flex items-center gap-2" style={{ color: "#536477" }}>
+          <Clock className="w-3.5 h-3.5" />
+          <span className="text-[12px]">
+            Total tracked:{" "}
+            <strong className="font-semibold" style={{ color: "#EAF2F8" }}>
+              {fmtSeconds(totalTracked)}
+            </strong>
+            {" "}across{" "}
+            <strong className="font-semibold" style={{ color: "#EAF2F8" }}>
+              {apps.length}
+            </strong>
+            {" "}app{apps.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+        <span
+          className="text-[11px] px-2 py-0.5 rounded-full"
+          style={{ background: "rgba(0,217,232,0.10)", color: "#00D9E8" }}>
+          Last {data.period_hours}h
+        </span>
+      </div>
+
+      {/* App rows */}
+      <div className="space-y-2" role="list" aria-label="App usage entries">
+        {apps.map((app, i) => {
+          const color = APP_COLORS[i % APP_COLORS.length]
+          const name  = app.process.replace(/\.exe$/i, "")
+          return (
+            <motion.div
+              key={app.process}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.22, delay: i * 0.03, ease: [0.22, 1, 0.36, 1] }}
+              role="listitem"
+              className="rounded-xl p-4"
+              style={{
+                background: "rgba(9,15,24,0.60)",
+                border:     "1px solid rgba(100,170,190,0.12)",
+              }}>
+              <div className="flex items-center justify-between gap-4 mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  {/* Colour dot */}
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                  <span
+                    className="text-[13px] font-semibold truncate"
+                    style={{ color: "#EAF2F8" }}
+                    title={app.process}>
+                    {name}
+                  </span>
+                  {app.last_window_title && (
+                    <span
+                      className="text-[11px] truncate hidden sm:block"
+                      style={{ color: "#536477" }}
+                      title={app.last_window_title}>
+                      — {app.last_window_title.slice(0, 48)}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-[12px] font-semibold nums" style={{ color: "#EAF2F8" }}>
+                    {fmtSeconds(app.total_seconds)}
+                  </span>
+                  <span
+                    className="text-[11px] px-2 py-0.5 rounded-full nums"
+                    style={{ background: `${color}18`, color }}>
+                    {app.percentage}%
+                  </span>
+                </div>
+              </div>
+              {/* Usage bar */}
+              <div
+                className="h-1.5 rounded-full overflow-hidden"
+                style={{ background: "rgba(100,170,190,0.10)" }}>
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${app.percentage}%` }}
+                  transition={{ duration: 0.55, delay: i * 0.04, ease: [0.22, 1, 0.36, 1] }}
+                  className="h-full rounded-full"
+                  style={{ background: color, boxShadow: `0 0 6px ${color}60` }}
+                />
+              </div>
+            </motion.div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 const TABS = [
-  { key: "daily",  label: "Daily"  },
-  { key: "weekly", label: "Weekly" },
+  { key: "daily",     label: "Daily"     },
+  { key: "weekly",    label: "Weekly"    },
+  { key: "app-usage", label: "App Usage" },
 ]
 
 export default function Reports() {
-  const [tab,       setTab]       = useState("daily")
-  const [daily,     setDaily]     = useState([])
-  const [weekly,    setWeekly]    = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState(null)
-  const [exporting, setExporting] = useState(false)
-  const [exportErr, setExportErr] = useState(null)
+  const [tab,              setTab]              = useState("daily")
+  const [daily,            setDaily]            = useState([])
+  const [weekly,           setWeekly]           = useState([])
+  const [appUsageData,     setAppUsageData]     = useState(null)
+  const [appUsageLoading,  setAppUsageLoading]  = useState(true)
+  const [appUsageError,    setAppUsageError]    = useState(null)
+  const [loading,          setLoading]          = useState(true)
+  const [error,            setError]            = useState(null)
+
+  // Export behaviour CSV
+  const [exportingBehavior, setExportingBehavior] = useState(false)
+  const [exportBehaviorErr, setExportBehaviorErr] = useState(null)
+
+  // Export app-usage CSV
+  const [exportingApps,    setExportingApps]    = useState(false)
+  const [exportAppsErr,    setExportAppsErr]    = useState(null)
 
   useAuthFetch(() => {
     setLoading(true)
@@ -124,41 +277,83 @@ export default function Reports() {
       .then(([d, w]) => { setDaily(d.days); setWeekly(w.weeks) })
       .catch((err) => setError(getErrorMessage(err, "Could not load reports.")))
       .finally(() => setLoading(false))
+
+    // Load app usage for the App Usage tab
+    setAppUsageLoading(true)
+    appUsageAPI.summary(24)
+      .then((res) => setAppUsageData(res))
+      .catch((err) => setAppUsageError(getErrorMessage(err, "Could not load app usage.")))
+      .finally(() => setAppUsageLoading(false))
   }, [])
 
-  const handleExport = async () => {
-    setExporting(true); setExportErr(null)
+  const handleExportBehavior = async () => {
+    setExportingBehavior(true); setExportBehaviorErr(null)
     try {
       const res = await reportsAPI.export()
-      const url = URL.createObjectURL(new Blob([res]))
+      const url = URL.createObjectURL(new Blob([res], { type: "text/csv" }))
       const a   = document.createElement("a")
       a.href     = url
-      a.download = `cogniload_export_${new Date().toISOString().slice(0, 10)}.csv`
+      a.download = `cogniload_behavior_${new Date().toISOString().slice(0, 10)}.csv`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
-      setExportErr(getErrorMessage(err, "Export failed."))
+      setExportBehaviorErr(getErrorMessage(err, "Export failed."))
     } finally {
-      setExporting(false)
+      setExportingBehavior(false)
     }
   }
 
-  // Build the Export CSV button + error as a single actions node — passed
-  // through the `actions` prop so PageHeader actually renders it. (Passing
-  // it as children was silently dropped by PageHeader.)
+  const handleExportAppUsage = async () => {
+    setExportingApps(true); setExportAppsErr(null)
+    try {
+      const res = await reportsAPI.exportAppUsage()
+      const url = URL.createObjectURL(new Blob([res], { type: "text/csv" }))
+      const a   = document.createElement("a")
+      a.href     = url
+      a.download = `cogniload_app_usage_${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setExportAppsErr(getErrorMessage(err, "Export failed."))
+    } finally {
+      setExportingApps(false)
+    }
+  }
+
+  // Render the right export button(s) depending on active tab
   const exportActions = (
     <div className="flex flex-col items-end gap-1.5">
-      <button
-        onClick={handleExport}
-        disabled={exporting}
-        aria-disabled={exporting}
-        className="btn-primary text-[13px] py-1.5">
-        {exporting
-          ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Exporting…</>
-          : <><Download className="w-3.5 h-3.5" /> Export CSV</>}
-      </button>
-      {exportErr && (
-        <p className="text-[11px] text-red-600 dark:text-red-400">{exportErr}</p>
+      <div className="flex gap-2">
+        {/* Always show the behavior export */}
+        <button
+          onClick={handleExportBehavior}
+          disabled={exportingBehavior}
+          aria-disabled={exportingBehavior}
+          className="btn-primary text-[13px] py-1.5">
+          {exportingBehavior
+            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Exporting…</>
+            : <><Download className="w-3.5 h-3.5" /> Export Behavior CSV</>}
+        </button>
+
+        {/* Show app-usage export when on that tab */}
+        {tab === "app-usage" && (
+          <button
+            onClick={handleExportAppUsage}
+            disabled={exportingApps}
+            aria-disabled={exportingApps}
+            className="btn-secondary text-[13px] py-1.5">
+            {exportingApps
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Exporting…</>
+              : <><Monitor className="w-3.5 h-3.5" /> Export App Usage CSV</>}
+          </button>
+        )}
+      </div>
+
+      {exportBehaviorErr && (
+        <p className="text-[11px] text-red-600 dark:text-red-400">{exportBehaviorErr}</p>
+      )}
+      {exportAppsErr && (
+        <p className="text-[11px] text-red-600 dark:text-red-400">{exportAppsErr}</p>
       )}
     </div>
   )
@@ -182,14 +377,28 @@ export default function Reports() {
 
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
-      {loading ? (
+      {loading && tab !== "app-usage" ? (
         <div className="flex justify-center py-16" aria-live="polite" aria-label="Loading reports">
           <Loader2 className="w-6 h-6 animate-spin text-indigo-500 dark:text-indigo-300" />
         </div>
       ) : (
         <>
-          <TabPanel id="daily"  active={tab}><DailyTab  days={daily}  /></TabPanel>
-          <TabPanel id="weekly" active={tab}><WeeklyTab weeks={weekly} /></TabPanel>
+          <TabPanel id="daily"     active={tab}><DailyTab  days={daily}   /></TabPanel>
+          <TabPanel id="weekly"    active={tab}><WeeklyTab weeks={weekly}  /></TabPanel>
+          <TabPanel id="app-usage" active={tab}>
+            <AppUsageTab
+              data={appUsageData}
+              loading={appUsageLoading}
+              error={appUsageError}
+              onRefresh={() => {
+                setAppUsageLoading(true); setAppUsageError(null)
+                appUsageAPI.summary(24)
+                  .then(setAppUsageData)
+                  .catch((e) => setAppUsageError(getErrorMessage(e)))
+                  .finally(() => setAppUsageLoading(false))
+              }}
+            />
+          </TabPanel>
         </>
       )}
     </div>

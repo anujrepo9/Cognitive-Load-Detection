@@ -176,6 +176,9 @@ fn main() {
             // Reports
             settings::get_daily_reports,
             settings::get_weekly_reports,
+            // App usage
+            settings::get_app_usage_summary,
+            settings::get_app_usage_timeline,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

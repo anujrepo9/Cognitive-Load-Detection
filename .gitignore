@@ -162,3 +162,5 @@ models/hand_landmarker.task
 
 # Old sidecar runtime data (deleted)
 sidecars/
+
+app_usage.*

@@ -37,7 +37,7 @@ from keyboard_listener import KeyboardListener
 from mouse_listener import MouseListener
 from window_tracker import WindowTracker
 from metrics import calculate
-from csv_writer import CSVWriter, RawEventWriter
+from csv_writer import CSVWriter, RawEventWriter, AppUsageCSVWriter
 from config import CollectorConfig, load_config, save_config
 from offline_queue import PushQueue
 import secure_store
@@ -87,7 +87,8 @@ def build_payload(row: dict) -> dict:
     return payload
 
 
-def send_rows_to_api(rows: list, cfg: CollectorConfig) -> tuple[list, list]:
+def send_rows_to_api(rows: list, cfg: CollectorConfig, session_id: list) -> tuple[list, list]:
+    """session_id is a one-element list [None] used as a mutable out-param."""
     successes, failures = [], []
     headers = {"Content-Type": "application/json"}
     if cfg.api_token:
@@ -100,6 +101,14 @@ def send_rows_to_api(rows: list, cfg: CollectorConfig) -> tuple[list, list]:
             resp = requests.post(url, json=payload, headers=headers, timeout=5)
             if resp.status_code in (200, 201):
                 successes.append(row)
+                # Capture session_id from the first successful response
+                if session_id[0] is None:
+                    try:
+                        data = resp.json()
+                        if "session_id" in data:
+                            session_id[0] = str(data["session_id"])
+                    except Exception:
+                        pass
             elif resp.status_code == 401:
                 if not _printed_err:
                     print("  [api] 401 — token rejected. Check your token.", flush=True)
@@ -130,7 +139,7 @@ def send_app_usage_to_api(durations: list, cfg: CollectorConfig) -> None:
     if cfg.api_token:
         headers["Authorization"] = f"Bearer {cfg.api_token}"
 
-    url = f"{cfg.api_url.rstrip('/')}/app-usage"
+    url = cfg.app_usage_url
     payload = {
         "usages": [
             {
@@ -177,10 +186,12 @@ def flush_loop(
     with_label: bool,
     stop_event: threading.Event,
     win_tracker: WindowTracker | None,
+    app_usage_writer: AppUsageCSVWriter | None = None,
 ):
     window_start = time.time()
     buf.set_window_start(window_start)
     interval = cfg.flush_interval
+    _current_session_id: list = [None]  # mutable container filled by send_rows_to_api
 
     while not stop_event.is_set():
         stop_event.wait(timeout=interval)
@@ -222,12 +233,24 @@ def flush_loop(
                 flush=True,
             )
 
+        # Write app usage to local CSV every flush (offline-safe)
+        if app_usage_writer and app_durations:
+            from datetime import datetime, timezone
+            _flush_end_iso   = datetime.fromtimestamp(now,          timezone.utc).isoformat()
+            _flush_start_iso = datetime.fromtimestamp(window_start, timezone.utc).isoformat()
+            app_usage_writer.write(
+                _current_session_id[0] or "",
+                _flush_start_iso,
+                _flush_end_iso,
+                app_durations,
+            )
+
         if cfg.offline_mode:
             queue.push(build_payload(row))
         else:
             pending = queue.pop_all()
             pending.append(build_payload(row))
-            _, failures = send_rows_to_api(pending, cfg)
+            _, failures = send_rows_to_api(pending, cfg, _current_session_id)
             if failures:
                 queue.retry_failed(failures)
             # Send app usage (best-effort — not queued on failure)
@@ -343,6 +366,8 @@ def main(argv=None):
     ms_listener  = MouseListener(buf,   raw_writer=raw_w)
     win_tracker  = WindowTracker(buf) if use_win_tracker else None
 
+    _app_usage_path = str(_DATA_DIR / "output" / "app_usage.csv") if _DATA_DIR else "output/app_usage.csv"
+    app_usage_w = AppUsageCSVWriter(_app_usage_path)
     with (CSVWriter(str(_DATA_DIR / "output" / "behavior_data.csv")) if _DATA_DIR else CSVWriter()) as csv_w:
         kb_listener.start()
         ms_listener.start()
@@ -364,7 +389,8 @@ def main(argv=None):
             signal.signal(signal.SIGINT, _sigint)
 
         try:
-            flush_loop(buf, csv_w, queue, cfg, args.label, stop, win_tracker)
+            flush_loop(buf, csv_w, queue, cfg, args.label, stop, win_tracker,
+                       app_usage_writer=app_usage_w)
         finally:
             kb_listener.stop()
             ms_listener.stop()
@@ -372,6 +398,7 @@ def main(argv=None):
                 win_tracker.stop()
             if raw_w:
                 raw_w.close()
+            app_usage_w.close()
             if not cfg.offline_mode:
                 pending = queue.pop_all()
                 if pending:

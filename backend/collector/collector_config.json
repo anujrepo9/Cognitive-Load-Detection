@@ -1,5 +1,5 @@
 {
-    "api_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzkzMDg1NDg2fQ.OnKVxx_CT-3aZoVa7KR3XWvqfeiNX-WXyeVxBFOluMQ",
+    "api_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzkzMTA3NjQzfQ.uEc_BbRStPYqhhhCjduxj6OpOaFUK2bYgSIR1aPJhDg",
     "api_url": "http://127.0.0.1:8000",
     "daemon": false,
     "flush_interval": 15.0,

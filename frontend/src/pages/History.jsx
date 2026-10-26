@@ -3,7 +3,7 @@ import { useAuthFetch } from "../hooks/useAuthFetch"
 import { motion } from "framer-motion"
 import {
   History as HistoryIcon, Download, Search,
-  ChevronLeft, ChevronRight, Loader2, X, Info,
+  ChevronLeft, ChevronRight, Loader2, X, Info, Monitor,
 } from "lucide-react"
 import { dashboardAPI, reportsAPI, getErrorMessage } from "../services/api"
 import LoadBadge from "../components/ui/LoadBadge"
@@ -17,11 +17,17 @@ export default function History() {
   const [total,      setTotal]      = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [loading,    setLoading]    = useState(true)
-  const [exporting,  setExporting]  = useState(false)
-  const [exportErr,  setExportErr]  = useState(null)
   const [page,       setPage]       = useState(1)
   const [fromDate,   setFromDate]   = useState("")
   const [toDate,     setToDate]     = useState("")
+
+  // Export behavior CSV
+  const [exportingBehavior, setExportingBehavior] = useState(false)
+  const [exportBehaviorErr, setExportBehaviorErr] = useState(null)
+
+  // Export app-usage CSV
+  const [exportingApps,    setExportingApps]    = useState(false)
+  const [exportAppsErr,    setExportAppsErr]    = useState(null)
 
   const fetchHistory = useCallback((p = 1, from = fromDate, to = toDate) => {
     setLoading(true)
@@ -38,7 +44,6 @@ export default function History() {
       .finally(() => setLoading(false))
   }, [fromDate, toDate])
 
-  // Gate on auth to avoid 401 on hard reload; re-runs when page changes
   useAuthFetch(() => { fetchHistory(page) }, [page])
 
   const applyFilters = () => { setPage(1); fetchHistory(1, fromDate, toDate) }
@@ -48,20 +53,37 @@ export default function History() {
     fetchHistory(1, "", "")
   }
 
-  const handleExport = async () => {
-    setExporting(true); setExportErr(null)
+  const handleExportBehavior = async () => {
+    setExportingBehavior(true); setExportBehaviorErr(null)
     try {
       const res = await reportsAPI.export()
-      const url = URL.createObjectURL(new Blob([res]))
+      const url = URL.createObjectURL(new Blob([res], { type: "text/csv" }))
       const a   = document.createElement("a")
       a.href     = url
-      a.download = `cogniload_sessions_${new Date().toISOString().slice(0, 10)}.csv`
+      a.download = `cogniload_behavior_${new Date().toISOString().slice(0, 10)}.csv`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
-      setExportErr(getErrorMessage(err, "Export failed. Please try again."))
+      setExportBehaviorErr(getErrorMessage(err, "Export failed. Please try again."))
     } finally {
-      setExporting(false)
+      setExportingBehavior(false)
+    }
+  }
+
+  const handleExportAppUsage = async () => {
+    setExportingApps(true); setExportAppsErr(null)
+    try {
+      const res = await reportsAPI.exportAppUsage()
+      const url = URL.createObjectURL(new Blob([res], { type: "text/csv" }))
+      const a   = document.createElement("a")
+      a.href     = url
+      a.download = `cogniload_app_usage_${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setExportAppsErr(getErrorMessage(err, "Export failed. Please try again."))
+    } finally {
+      setExportingApps(false)
     }
   }
 
@@ -74,27 +96,45 @@ export default function History() {
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
+
+      {/* ── Header ── */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-        className="flex flex-wrap items-center justify-between gap-4">
+        className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: "#EAF2F8" }}>Session history</h1>
+          <h1 className="text-2xl font-bold" style={{ color: "#EAF2F8" }}>Session History</h1>
           <p className="text-sm mt-0.5" style={{ color: "#8493A7" }}>
             All past monitoring sessions — each row is one continuous tracking period
           </p>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <button onClick={handleExport} disabled={exporting}
-            className="btn-secondary" aria-disabled={exporting}>
-            {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {exporting ? "Exporting…" : "Export CSV"}
-          </button>
-          {exportErr && (
-            <p className="text-xs text-red-500">{exportErr}</p>
+
+        {/* Export buttons */}
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex gap-2">
+            <button onClick={handleExportBehavior} disabled={exportingBehavior}
+              className="btn-secondary" aria-disabled={exportingBehavior}>
+              {exportingBehavior
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Download className="w-4 h-4" />}
+              {exportingBehavior ? "Exporting…" : "Export Behavior CSV"}
+            </button>
+            <button onClick={handleExportAppUsage} disabled={exportingApps}
+              className="btn-secondary" aria-disabled={exportingApps}>
+              {exportingApps
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Monitor className="w-4 h-4" />}
+              {exportingApps ? "Exporting…" : "Export App Usage CSV"}
+            </button>
+          </div>
+          {exportBehaviorErr && (
+            <p className="text-xs text-red-500">{exportBehaviorErr}</p>
+          )}
+          {exportAppsErr && (
+            <p className="text-xs text-red-500">{exportAppsErr}</p>
           )}
         </div>
       </motion.div>
 
-      {/* Date filters */}
+      {/* ── Date filters ── */}
       <div className="flex flex-wrap items-end gap-3">
         <div>
           <label htmlFor="from-date"
@@ -134,6 +174,7 @@ export default function History() {
         )}
       </div>
 
+      {/* ── Table ── */}
       {loading ? (
         <div className="flex justify-center py-16" aria-live="polite" aria-label="Loading">
           <Loader2 className="w-6 h-6 animate-spin text-accent" />
@@ -154,11 +195,12 @@ export default function History() {
                 <tr className="border-b border-gray-100 dark:border-slate-800
                   bg-gray-50 dark:bg-slate-800/50">
                   {[
-                    { label: "Session",     tip: null },
-                    { label: "Started",     tip: null },
-                    { label: "Duration",    tip: "Time between session start and end" },
-                    { label: "Avg load",    tip: "Most common cognitive load level in the session" },
-                    { label: "Predictions", tip: "Number of ML predictions made during the session" },
+                    { label: "Session",       tip: null },
+                    { label: "Started",       tip: null },
+                    { label: "Duration",      tip: "Time between session start and end" },
+                    { label: "Avg load",      tip: "Most common cognitive load level in the session" },
+                    { label: "Predictions",   tip: "Number of ML predictions made during the session" },
+                    { label: "Top app",       tip: "App with the most foreground time this session" },
                   ].map(({ label, tip }) => (
                     <th key={label} scope="col"
                       className="text-left px-5 py-3 text-xs text-gray-500
@@ -180,15 +222,21 @@ export default function History() {
                   <tr key={s.session_id ?? i}
                     className="border-b border-gray-50 dark:border-slate-800/50
                       hover:bg-gray-50 dark:hover:bg-slate-800/40 transition-colors">
+
+                    {/* Session ID */}
                     <td className="px-5 py-3">
                       <span className="text-gray-900 dark:text-white font-mono text-xs
                         bg-gray-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg">
                         #{s.session_id}
                       </span>
                     </td>
+
+                    {/* Started */}
                     <td className="px-5 py-3 text-gray-500 dark:text-gray-400">
                       {formatTime(s.start_time)}
                     </td>
+
+                    {/* Duration */}
                     <td className="px-5 py-3 text-gray-500 dark:text-gray-400">
                       {s.duration
                         ? s.duration
@@ -196,13 +244,36 @@ export default function History() {
                           ? "—"
                           : <span className="text-green-500 text-xs font-medium">Active</span>}
                     </td>
+
+                    {/* Avg load */}
                     <td className="px-5 py-3">
                       <LoadBadge level={s.avg_load || "unknown"} />
                     </td>
+
+                    {/* Predictions */}
                     <td className="px-5 py-3">
                       <span className="text-gray-900 dark:text-white font-medium">
                         {s.prediction_count ?? "—"}
                       </span>
+                    </td>
+
+                    {/* Top app — show if the backend returns it, else friendly fallback */}
+                    <td className="px-5 py-3">
+                      {s.top_app ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Monitor className="w-3 h-3 shrink-0" style={{ color: "#00D9E8" }} />
+                          <span className="text-gray-900 dark:text-white text-xs font-medium">
+                            {s.top_app.replace(/\.exe$/i, "")}
+                          </span>
+                          {s.top_app_duration && (
+                            <span className="text-gray-400 text-xs">
+                              {s.top_app_duration}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-xs">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

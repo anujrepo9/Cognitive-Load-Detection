@@ -981,3 +981,129 @@ pub async fn get_weekly_reports(
 
     Ok(WeeklyResponse { weeks: weeks_vec })
 }
+// ── App Usage ─────────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct AppUsageEntry {
+    pub process:            String,
+    pub total_seconds:      f64,
+    pub percentage:         f64,
+    pub last_window_title:  String,
+}
+
+#[derive(Serialize)]
+pub struct AppUsageSummary {
+    pub period_hours:   i64,
+    pub total_tracked:  f64,
+    pub apps:           Vec<AppUsageEntry>,
+}
+
+#[tauri::command]
+pub async fn get_app_usage_summary(
+    state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
+    token: String,
+    hours: Option<i64>,
+) -> Result<AppUsageSummary, String> {
+    let user_id     = decode_access_token(&token, &jwt.0)?;
+    let conn        = open(&state.0).map_err(|e| e.to_string())?;
+    let hours       = hours.unwrap_or(24).max(1).min(720);
+    let interval    = format!("-{hours} hours");
+
+    let mut stmt = conn.prepare(
+        "SELECT process, window_title, duration_sec
+         FROM app_usage_logs
+         WHERE user_id = ?1
+           AND recorded_at >= datetime('now', ?2)
+         ORDER BY recorded_at DESC",
+    ).map_err(|e| e.to_string())?;
+
+    struct Row { process: String, title: String, secs: f64 }
+    let rows: Vec<Row> = stmt
+        .query_map(params![user_id, interval], |r| {
+            Ok(Row {
+                process: r.get(0)?,
+                title:   r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                secs:    r.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Aggregate by process
+    use std::collections::HashMap;
+    let mut totals: HashMap<String, f64>    = HashMap::new();
+    let mut titles: HashMap<String, String> = HashMap::new();
+    for r in &rows {
+        *totals.entry(r.process.clone()).or_insert(0.0) += r.secs;
+        titles.insert(r.process.clone(), r.title.clone());
+    }
+
+    let total_tracked: f64 = totals.values().sum();
+    let mut apps: Vec<AppUsageEntry> = totals
+        .iter()
+        .map(|(proc, &secs)| AppUsageEntry {
+            process:           proc.clone(),
+            total_seconds:     (secs * 10.0).round() / 10.0,
+            percentage:        if total_tracked > 0.0 { (secs / total_tracked * 1000.0).round() / 10.0 } else { 0.0 },
+            last_window_title: titles.get(proc).cloned().unwrap_or_default(),
+        })
+        .collect();
+    apps.sort_by(|a, b| b.total_seconds.partial_cmp(&a.total_seconds).unwrap_or(std::cmp::Ordering::Equal));
+
+    Ok(AppUsageSummary {
+        period_hours:  hours,
+        total_tracked: (total_tracked * 10.0).round() / 10.0,
+        apps,
+    })
+}
+
+#[derive(Serialize)]
+pub struct AppUsageLogEntry {
+    pub id:           i64,
+    pub process:      String,
+    pub window_title: String,
+    pub duration_sec: f64,
+    pub recorded_at:  String,
+}
+
+#[tauri::command]
+pub async fn get_app_usage_timeline(
+    state: tauri::State<'_, DbPath>,
+    jwt:   tauri::State<'_, JwtSecret>,
+    token: String,
+    hours: Option<i64>,
+    limit: Option<i64>,
+) -> Result<Vec<AppUsageLogEntry>, String> {
+    let user_id  = decode_access_token(&token, &jwt.0)?;
+    let conn     = open(&state.0).map_err(|e| e.to_string())?;
+    let hours    = hours.unwrap_or(8).max(1).min(168);
+    let limit    = limit.unwrap_or(200).max(1).min(1000);
+    let interval = format!("-{hours} hours");
+
+    let mut stmt = conn.prepare(
+        "SELECT id, process, window_title, duration_sec, recorded_at
+         FROM app_usage_logs
+         WHERE user_id = ?1
+           AND recorded_at >= datetime('now', ?2)
+         ORDER BY recorded_at DESC
+         LIMIT ?3",
+    ).map_err(|e| e.to_string())?;
+
+    let entries: Vec<AppUsageLogEntry> = stmt
+        .query_map(params![user_id, interval, limit], |r| {
+            Ok(AppUsageLogEntry {
+                id:           r.get(0)?,
+                process:      r.get(1)?,
+                window_title: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                duration_sec: r.get(3)?,
+                recorded_at:  r.get::<_, Option<String>>(4)?.unwrap_or_default(),
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(entries)
+}

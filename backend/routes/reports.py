@@ -1,9 +1,10 @@
 """
 routes/reports.py — Report endpoints.
 
-  GET /reports/daily   — per-day aggregated stats
-  GET /reports/weekly  — per-week aggregated stats
-  GET /reports/export  — CSV download of behavior + predictions
+  GET /reports/daily            — per-day aggregated stats
+  GET /reports/weekly           — per-week aggregated stats
+  GET /reports/export           — CSV download of behavior + predictions
+  GET /reports/export-app-usage — CSV download of per-app foreground time
 """
 
 import csv
@@ -16,7 +17,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from database.db import get_db
-from database.models import User, Session as UserSession, BehaviorData, Prediction
+from database.models import User, Session as UserSession, BehaviorData, Prediction, AppUsageLog
 from auth.jwt import get_current_user
 from api.schemas import DailyReportResponse, DailyReportEntry, WeeklyReportResponse, WeeklyReportEntry
 
@@ -165,8 +166,6 @@ def export_csv(
                 preds_by_behavior[pred.behavior_id] = pred
 
         if not behaviors:
-            # Session started but no data flushed — emit one row so the
-            # session_id always appears in the export.
             writer.writerow([
                 sess.id,
                 sess.start_time.isoformat() if sess.start_time else "",
@@ -181,7 +180,7 @@ def export_csv(
             writer.writerow([
                 sess.id,
                 b.created_at.isoformat() if b.created_at else "",
-                b.typing_wpm if b.typing_wpm is not None else "",  # 0 is valid; only NULL → blank
+                b.typing_wpm if b.typing_wpm is not None else "",
                 b.chars_per_min, b.avg_hold_ms, b.avg_flight_ms,
                 b.error_rate, b.pause_count, b.avg_pause_ms, b.typing_variance,
                 b.avg_cursor_speed, b.movement_distance, b.click_rate,
@@ -192,7 +191,65 @@ def export_csv(
             ])
 
     output.seek(0)
-    filename = f"cogniload_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    filename = f"cogniload_behavior_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/export-app-usage")
+def export_app_usage_csv(
+    days: int     = Query(30, ge=1, le=365, description="How many past days to export"),
+    db:   Session = Depends(get_db),
+    user: User    = Depends(get_current_user),
+):
+    """
+    Stream a CSV of per-app foreground time.
+
+    Columns:
+        recorded_at   — when this flush window ended (UTC ISO 8601)
+        process       — process name (e.g. Code.exe, chrome.exe, steam.exe)
+        window_title  — last active window title seen for this process
+        duration_sec  — foreground seconds in this flush window
+        duration_min  — same value in minutes (rounded to 2 dp), for readability
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    logs = (
+        db.query(AppUsageLog)
+        .filter(
+            AppUsageLog.user_id     == user.id,
+            AppUsageLog.recorded_at >= cutoff,
+        )
+        .order_by(AppUsageLog.recorded_at.desc())
+        .all()
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "session_id",
+        "recorded_at",
+        "process",
+        "window_title",
+        "duration_sec",
+        "duration_min",
+    ])
+
+    for log in logs:
+        writer.writerow([
+            log.session_id if hasattr(log, "session_id") and log.session_id else "",
+            log.recorded_at.isoformat() if log.recorded_at else "",
+            log.process,
+            log.window_title or "",
+            round(log.duration_sec, 2),
+            round(log.duration_sec / 60, 2),
+        ])
+
+    output.seek(0)
+    filename = f"cogniload_app_usage_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",

@@ -469,6 +469,12 @@ export const reportsAPI = {
 
   weekly: (weeks = 8) =>
     universalCall("get_weekly_reports", { weeks }, "GET", `/reports/weekly?weeks=${weeks}`, undefined),
+
+  exportAppUsage: (days = 30) =>
+    withAutoRefresh(
+      () => httpFetchRaw(`/reports/export-app-usage?days=${days}`),
+      "/reports/export-app-usage",
+    ),
 }
 
 // ── Analytics API ─────────────────────────────────────────────────────────────
@@ -517,25 +523,13 @@ export async function call(command, args = {}) {
 
   throw new Error(`[CogniLoad api.js] Unmapped HTTP command: "${command}". Add it to HTTP_MAP.`)
 }
-// ── App Usage API ─────────────────────────────────────────────────────────────
-
 export const appUsageAPI = {
-  /**
-   * Fetch aggregated per-app foreground time for the given lookback window.
-   * @param {number} hours - lookback window in hours (default 24)
-   * @returns {Promise<AppUsageSummaryResponse>}
-   */
   summary: (hours = 24) =>
     universalCall(
       "get_app_usage_summary", { hours },
       "GET", `/app-usage/summary?hours=${hours}`, undefined,
     ),
 
-  /**
-   * Fetch raw timeline log entries.
-   * @param {number} hours
-   * @param {number} limit
-   */
   timeline: (hours = 8, limit = 200) =>
     universalCall(
       "get_app_usage_timeline", { hours, limit },

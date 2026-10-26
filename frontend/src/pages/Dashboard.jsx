@@ -292,6 +292,9 @@ export default function Dashboard() {
           </div>
         </motion.div>
 
+      {/* ── App Usage Panel ── */}
+      <AppUsagePanel hours={24} />
+
         {/* Confidence chart */}
         <motion.div
           initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
@@ -440,11 +443,6 @@ export default function Dashboard() {
             </div>
           )}
         </motion.div>
-      {/* ── App Usage Panel ── */}
-      <div className="px-4 pb-6 sm:px-6">
-        <AppUsagePanel hours={24} />
-      </div>
-
       </div>
     </div>
   )

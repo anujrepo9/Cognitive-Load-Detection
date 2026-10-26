@@ -93,3 +93,90 @@ class RawEventWriter:
 
     def __exit__(self, *_):
         self.close()
+
+
+# ── App Usage CSV ─────────────────────────────────────────────────────────────
+
+APP_USAGE_COLUMNS = [
+    "session_id",       # backend session ID (empty when offline / not yet known)
+    "flush_start",      # ISO timestamp — start of the flush window
+    "flush_end",        # ISO timestamp — end of the flush window (≈ recorded_at)
+    "process",          # e.g. "Code.exe", "chrome.exe", "steam.exe"
+    "window_title",     # last seen window title for this process in the window
+    "duration_sec",     # total foreground seconds within the flush window
+]
+
+
+class AppUsageCSVWriter:
+    """
+    Appends one row per app per flush window to app_usage.csv.
+
+    Columns:
+        flush_start   — window start (ISO 8601 UTC)
+        flush_end     — window end   (ISO 8601 UTC)
+        process       — process name reported by the OS
+        window_title  — last active window title for this process
+        duration_sec  — foreground seconds accumulated in this window
+
+    Usage (mirrors CSVWriter):
+        writer = AppUsageCSVWriter("output/app_usage.csv")
+        writer.write(flush_start_iso, flush_end_iso, app_durations)
+        writer.close()
+
+        # or as a context manager:
+        with AppUsageCSVWriter(...) as w:
+            w.write(...)
+    """
+
+    def __init__(self, path: str = "output/app_usage.csv"):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+        file_exists = self.path.exists() and self.path.stat().st_size > 0
+
+        # Migrate if header changed
+        if file_exists:
+            with open(self.path, "r", newline="", encoding="utf-8") as f:
+                existing_header = f.readline().strip().split(",")
+            if existing_header != APP_USAGE_COLUMNS:
+                backup = self.path.with_suffix(".bak.csv")
+                self.path.rename(backup)
+                print(f"  [app_usage_csv] Column mismatch — old data backed up to {backup.name}")
+                file_exists = False
+
+        self._file   = open(self.path, "a", newline="", encoding="utf-8")
+        self._writer = csv.DictWriter(self._file, fieldnames=APP_USAGE_COLUMNS)
+        if not file_exists:
+            self._writer.writeheader()
+            self._file.flush()
+
+    def write(self, session_id: str, flush_start: str, flush_end: str, durations: list) -> None:
+        """
+        Append one row per AppDuration in `durations`.
+
+        Args:
+            flush_start: ISO 8601 string for the start of the flush window.
+            flush_end:   ISO 8601 string for the end   of the flush window.
+            durations:   list of AppDuration objects (from window_tracker).
+        """
+        for d in durations:
+            if d.duration_sec <= 0:
+                continue
+            self._writer.writerow({
+                "session_id":   session_id,
+                "flush_start":  flush_start,
+                "flush_end":    flush_end,
+                "process":      d.process,
+                "window_title": d.window_title or "",
+                "duration_sec": round(d.duration_sec, 2),
+            })
+        self._file.flush()
+
+    def close(self):
+        self._file.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()

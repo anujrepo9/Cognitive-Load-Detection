@@ -63,6 +63,10 @@ class CollectorConfig:
     def to_dict(self) -> dict:
         return asdict(self)
 
+    @property
+    def app_usage_url(self) -> str:           # ← ADD THIS
+        return f"{self._api_base}/app-usage"
+
     @classmethod
     def from_dict(cls, data: dict) -> "CollectorConfig":
         known = {k: v for k, v in data.items() if k in DEFAULTS}
