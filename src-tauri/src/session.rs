@@ -59,17 +59,22 @@ pub async fn end_session(
     let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
-    let rows = conn
-        .execute(
-            "UPDATE sessions SET end_time = datetime('now')
-             WHERE id = ?1 AND user_id = ?2 AND end_time IS NULL",
-            params![session_id, user_id],
-        )
-        .map_err(|e| e.to_string())?;
+    // First check ownership (whether ended or not)
+    let exists: bool = conn.query_row(
+        "SELECT COUNT(*) FROM sessions WHERE id = ?1 AND user_id = ?2",
+        params![session_id, user_id],
+        |r| r.get::<_, i64>(0),
+    ).unwrap_or(0) > 0;
 
-    if rows == 0 {
-        return Err("Session not found or already ended".into());
+    if !exists {
+        return Err("Session not found".into());
     }
+
+    // Mark ended — idempotent: if already ended, this is a no-op (rows == 0 is OK)
+    conn.execute(
+        "UPDATE sessions SET end_time = datetime('now') WHERE id = ?1 AND user_id = ?2 AND end_time IS NULL",
+        params![session_id, user_id],
+    ).map_err(|e| e.to_string())?;
 
     let mut stmt = conn
         .prepare("SELECT id, user_id, start_time, end_time FROM sessions WHERE id = ?1")

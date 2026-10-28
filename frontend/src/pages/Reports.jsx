@@ -329,24 +329,22 @@ export default function Reports() {
           onClick={handleExportBehavior}
           disabled={exportingBehavior}
           aria-disabled={exportingBehavior}
-          className="btn-primary text-[13px] py-1.5">
+          className="btn-secondary text-[13px] py-1.5">
           {exportingBehavior
             ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Exporting…</>
             : <><Download className="w-3.5 h-3.5" /> Export Behavior CSV</>}
         </button>
 
-        {/* Show app-usage export when on that tab */}
-        {tab === "app-usage" && (
-          <button
-            onClick={handleExportAppUsage}
-            disabled={exportingApps}
-            aria-disabled={exportingApps}
-            className="btn-secondary text-[13px] py-1.5">
-            {exportingApps
-              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Exporting…</>
-              : <><Monitor className="w-3.5 h-3.5" /> Export App Usage CSV</>}
-          </button>
-        )}
+        {/* Always show app-usage export */}
+        <button
+          onClick={handleExportAppUsage}
+          disabled={exportingApps}
+          aria-disabled={exportingApps}
+          className="btn-secondary text-[13px] py-1.5">
+          {exportingApps
+            ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Exporting…</>
+            : <><Monitor className="w-3.5 h-3.5" /> Export App Usage CSV</>}
+        </button>
       </div>
 
       {exportBehaviorErr && (

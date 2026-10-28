@@ -46,7 +46,7 @@
  * cache false (the environment cannot change after page load).
  */
 let _isTauriCache = null
-function isTauri() {
+export function isTauri() {
   if (_isTauriCache !== null) return _isTauriCache
   _isTauriCache =
     typeof window !== "undefined" &&

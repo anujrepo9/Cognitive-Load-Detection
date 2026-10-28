@@ -139,6 +139,9 @@ pub fn init_db(path: &str) -> Result<()> {
 
     if current_version < 1 {
         conn.execute_batch("
+            -- Drop leftover temp table from any previously interrupted migration
+            DROP TABLE IF EXISTS behavior_data_old;
+
             -- Rename the old table
             ALTER TABLE behavior_data RENAME TO behavior_data_old;
 

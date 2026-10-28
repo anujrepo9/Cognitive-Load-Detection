@@ -43,19 +43,21 @@ fn main() {
                     .ok()
                     .and_then(|p| p.parent().map(|d| d.to_path_buf()));
 
-                let candidates: Vec<std::path::PathBuf> = {
-                    let mut v = Vec::new();
-                    if let Some(ref f) = env_file {
-                        v.push(std::path::PathBuf::from(f));
+                // Try explicit env var first, then walk up from exe to find backend/.env
+                let mut env_candidates: Vec<std::path::PathBuf> = Vec::new();
+                if let Some(ref f) = env_file {
+                    env_candidates.push(std::path::PathBuf::from(f));
+                }
+                // Walk up directory tree from exe to find backend/.env
+                if let Some(ref dir) = exe_dir {
+                    let mut search = Some(dir.as_path());
+                    while let Some(cur) = search {
+                        env_candidates.push(cur.join("backend").join(".env"));
+                        search = cur.parent();
                     }
-                    if let Some(ref dir) = exe_dir {
-                        v.push(dir.join("backend").join(".env"));
-                        v.push(dir.join("..").join("backend").join(".env"));
-                    }
-                    v
-                };
+                }
 
-                for path in candidates {
+                for path in env_candidates {
                     if path.exists() {
                         if let Ok(contents) = std::fs::read_to_string(&path) {
                             for line in contents.lines() {
@@ -118,9 +120,67 @@ fn main() {
                 }
             }
 
+            // ── Resolve DB path ──────────────────────────────────────────────
+            //
+            // Priority:
+            //   1. COGNILOAD_DB_PATH env var  (explicit override)
+            //   2. <exe_dir>/backend/cogniload.db   (dev: cargo tauri dev)
+            //   3. <exe_dir>/../backend/cogniload.db (alt dev layout)
+            //   4. <exe_dir>/cogniload.db            (packaged .exe with bundled backend)
+            //   5. app-data dir / cogniload.db        (standalone fallback)
+            //
+            // This makes the Tauri desktop app share the same SQLite database
+            // as the FastAPI web backend, so accounts registered via the web
+            // app (http://localhost:5173) work in the desktop app as-is.
+            let db_path_str = {
+                let mut resolved: Option<String> = None;
+
+                // 1. Explicit env override
+                if let Ok(explicit) = std::env::var("COGNILOAD_DB_PATH") {
+                    let p = std::path::PathBuf::from(&explicit);
+                    if p.exists() {
+                        resolved = Some(explicit);
+                    }
+                }
+
+                // 2. Walk up from the exe directory looking for backend/cogniload.db
+                //    This handles deep build output dirs like target\debug\
+                if resolved.is_none() {
+                    if let Some(ref dir) = exe_dir {
+                        let mut search = Some(dir.as_path());
+                        while let Some(cur) = search {
+                            let candidate = cur.join("backend").join("cogniload.db");
+                            if candidate.exists() {
+                                let s = candidate.to_string_lossy().to_string();
+                                println!("[setup] Using existing web-app DB at {}", candidate.display());
+                                resolved = Some(s);
+                                break;
+                            }
+                            // Also check cogniload.db directly beside an exe that bundles the backend
+                            let beside = cur.join("cogniload.db");
+                            if beside.exists() {
+                                let s = beside.to_string_lossy().to_string();
+                                println!("[setup] Using existing web-app DB at {}", beside.display());
+                                resolved = Some(s);
+                                break;
+                            }
+                            search = cur.parent();
+                        }
+                    }
+                }
+
+                // 5. Fallback — Tauri's own app-data dir (standalone mode)
+                resolved.unwrap_or_else(|| {
+                    let p = data_dir.join("cogniload.db");
+                    eprintln!(
+                        "[setup] WARNING: web-app DB not found.                          Using standalone DB at {}.                          Accounts created here won't be shared with the web app.                          Set COGNILOAD_DB_PATH to override.",
+                        p.display()
+                    );
+                    p.to_string_lossy().to_string()
+                })
+            };
+
             // ── Init DB schema ───────────────────────────────────────────────
-            let db_path     = data_dir.join("cogniload.db");
-            let db_path_str = db_path.to_string_lossy().to_string();
             db::init_db(&db_path_str).expect("DB init failed");
             app.manage(DbPath(db_path_str));
             app.manage(JwtSecret(jwt_secret));

@@ -1,4 +1,5 @@
-export function PageHeader({ title, description, action, badge }) {
+export function PageHeader({ title, description, action, actions, badge }) {
+  const slot = actions ?? action   // support both spellings
   return (
     <div className="page-header flex items-start justify-between gap-4">
       <div>
@@ -14,7 +15,7 @@ export function PageHeader({ title, description, action, badge }) {
           <p className="mt-1 text-sm" style={{ color: "#8493A7" }}>{description}</p>
         )}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      {slot && <div className="shrink-0">{slot}</div>}
     </div>
   )
 }

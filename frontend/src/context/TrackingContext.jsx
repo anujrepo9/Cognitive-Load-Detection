@@ -5,7 +5,7 @@ import {
 import { useAuth } from "./AuthContext"
 import { sessionAPI, behaviorAPI, predictAPI, collectorAPI } from "../services/api"
 import { useWebSocket } from "../hooks/useWebSocket"
-import { isTauri } from "../hooks/useTauri"
+import { isTauri } from "../services/api"
 
 const TrackingContext = createContext(null)
 
@@ -157,7 +157,8 @@ export function TrackingProvider({ children }) {
       return true
     } catch (e) {
       setTrackingState("idle")
-      setError("Unable to start session.")
+      const startMsg = typeof e === "string" ? e : (e?.message ?? "Unknown error")
+      setError("Unable to start session — " + startMsg)
       return false
     }
   }, [hasConsent])
@@ -192,10 +193,13 @@ export function TrackingProvider({ children }) {
       // final flush.  The in-flight flush holds the Rust ORT mutex; calling
       // flush() concurrently would race on that mutex and deadlock.
       if (flushInProgressRef.current) {
+        // Wait for in-flight flush with a 5-second timeout so a stuck ONNX
+        // inference can't block the End button forever.
         await new Promise((resolve) => {
           const wait = setInterval(() => {
             if (!flushInProgressRef.current) { clearInterval(wait); resolve() }
           }, 100)
+          setTimeout(() => { clearInterval(wait); flushInProgressRef.current = false; resolve() }, 5000)
         })
       }
       // Final flush before ending (only when actively tracking, not when paused)
@@ -213,7 +217,9 @@ export function TrackingProvider({ children }) {
       // Roll back to the state we were in before clicking End so the
       // End button remains visible and the user can retry.
       setTrackingState(prevState)
-      setError("Unable to end session — " + (e?.message ?? "please retry."))
+      // Tauri rejects with a plain string; Error objects have .message
+      const msg = typeof e === "string" ? e : (e?.message ?? "please retry.")
+      setError("Unable to end session — " + msg)
     }
   }, [trackingState, session, flush])
 
