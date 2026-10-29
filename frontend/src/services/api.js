@@ -536,3 +536,60 @@ export const appUsageAPI = {
       "GET", `/app-usage/timeline?hours=${hours}&limit=${limit}`, undefined,
     ),
 }
+
+// ── Admin API ─────────────────────────────────────────────────────────────────
+
+export const adminAPI = {
+  dashboard:          () =>
+    withAutoRefresh((tok) => httpFetch("GET", "/admin/dashboard", { token: tok }), "/admin/dashboard"),
+  listEmployees:      () =>
+    withAutoRefresh((tok) => httpFetch("GET", "/admin/employees", { token: tok }), "/admin/employees"),
+  getEmployee:        (id) =>
+    withAutoRefresh((tok) => httpFetch("GET", `/admin/employees/${id}`, { token: tok }), "/admin/employees"),
+  createEmployee:     (body) =>
+    withAutoRefresh((tok) => httpFetch("POST", "/admin/employees", { body, token: tok }), "/admin/employees"),
+  updateEmployee:     (id, body) =>
+    withAutoRefresh((tok) => httpFetch("PATCH", `/admin/employees/${id}`, { body, token: tok }), "/admin/employees"),
+  deleteEmployee:     (id, hard = false) =>
+    withAutoRefresh((tok) => httpFetch("DELETE", `/admin/employees/${id}?hard=${hard}`, { token: tok }), "/admin/employees"),
+  employeeCogniload:  (id, limit = 50) =>
+    withAutoRefresh((tok) => httpFetch("GET", `/admin/employees/${id}/cogniload?limit=${limit}`, { token: tok }), "/admin/employees"),
+  employeeAppUsage:   (id, hours = 24) =>
+    withAutoRefresh((tok) => httpFetch("GET", `/admin/employees/${id}/app-usage?hours=${hours}`, { token: tok }), "/admin/employees"),
+  employeeSessions:   (id, page = 1, perPage = 10) =>
+    withAutoRefresh((tok) => httpFetch("GET", `/admin/employees/${id}/sessions?page=${page}&per_page=${perPage}`, { token: tok }), "/admin/employees"),
+  sendAlert:          (body) =>
+    withAutoRefresh((tok) => httpFetch("POST", "/admin/alerts", { body, token: tok }), "/admin/alerts"),
+  listAlerts:         () =>
+    withAutoRefresh((tok) => httpFetch("GET", "/admin/alerts", { token: tok }), "/admin/alerts"),
+  alertsForEmployee:  (id) =>
+    withAutoRefresh((tok) => httpFetch("GET", `/admin/alerts/employee/${id}`, { token: tok }), "/admin/alerts"),
+  deleteAlert:        (alertId) =>
+    withAutoRefresh((tok) => httpFetch("DELETE", `/admin/alerts/${alertId}`, { token: tok }), "/admin/alerts"),
+  myAlerts:           () =>
+    withAutoRefresh((tok) => httpFetch("GET", "/admin/my-alerts", { token: tok }), "/admin/my-alerts"),
+  markAlertRead:      (alertId) =>
+    withAutoRefresh((tok) => httpFetch("PATCH", `/admin/my-alerts/${alertId}/read`, { token: tok }), "/admin/my-alerts"),
+
+  // ── Admin Settings ──────────────────────────────────────────────────────────
+  getSettings:        () =>
+    withAutoRefresh((tok) => httpFetch("GET", "/admin/settings", { token: tok }), "/admin/settings"),
+  updateSettings:     (body) =>
+    withAutoRefresh((tok) => httpFetch("PATCH", "/admin/settings", { body, token: tok }), "/admin/settings"),
+
+  // ── Promote / demote ────────────────────────────────────────────────────────
+  promoteToAdmin:     (employeeId) =>
+    withAutoRefresh((tok) => httpFetch("POST", `/admin/employees/${employeeId}/promote`, { token: tok }), "/admin/employees"),
+  revokeAdmin:        (userId) =>
+    withAutoRefresh((tok) => httpFetch("POST", `/admin/employees/${userId}/demote`, { token: tok }), "/admin/employees"),
+
+  // ── Transfer team ────────────────────────────────────────────────────────────
+  listAdmins:         () =>
+    withAutoRefresh((tok) => httpFetch("GET", "/admin/admins", { token: tok }), "/admin/admins"),
+  transferTeam:       (body) =>
+    withAutoRefresh((tok) => httpFetch("POST", "/admin/transfer-team", { body, token: tok }), "/admin/transfer-team"),
+
+  // ── Audit log ────────────────────────────────────────────────────────────────
+  auditLog:           (limit = 100, offset = 0) =>
+    withAutoRefresh((tok) => httpFetch("GET", `/admin/audit-log?limit=${limit}&offset=${offset}`, { token: tok }), "/admin/audit-log"),
+}

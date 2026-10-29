@@ -29,6 +29,7 @@ from routes import settings as settings_route
 from routes import model as model_route
 from routes import ws as ws_route
 from routes import app_usage as app_usage_route
+from routes import admin as admin_route
 
 setup_logging()
 logger = get_logger(__name__)
@@ -97,6 +98,7 @@ app.include_router(analytics.router,        prefix="/api")
 app.include_router(settings_route.router,   prefix="/api")
 app.include_router(model_route.router,      prefix="/api")
 app.include_router(app_usage_route.router,  prefix="/api")
+app.include_router(admin_route.router,        prefix="/api")
 app.include_router(ws_route.router)
 
 # ── Health check ──────────────────────────────────────────────────────────────

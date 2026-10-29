@@ -154,6 +154,118 @@ def run():
         else:
             print("[OK] refresh_tokens already exists")
 
+
+        # ── 6. users.role column ─────────────────────────────────────────────────
+        if not col_exists(inspector, "users", "role"):
+            print("Adding column: users.role ...")
+            conn.execute(text(
+                "ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'employee'"
+                if not IS_SQLITE else
+                "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'employee'"
+            ))
+            print("  [OK] users.role added")
+        else:
+            print("[OK] users.role already exists")
+
+        # ── 7. users.manager_id column ───────────────────────────────────────────
+        if not col_exists(inspector, "users", "manager_id"):
+            print("Adding column: users.manager_id ...")
+            conn.execute(text(
+                "ALTER TABLE users ADD COLUMN manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL"
+                if not IS_SQLITE else
+                "ALTER TABLE users ADD COLUMN manager_id INTEGER"
+            ))
+            print("  [OK] users.manager_id added")
+        else:
+            print("[OK] users.manager_id already exists")
+
+        # ── 8. admin_alerts table ────────────────────────────────────────────────
+        if not table_exists(inspector, "admin_alerts"):
+            print("Creating table: admin_alerts ...")
+            conn.execute(text("""
+                CREATE TABLE admin_alerts (
+                    id          INTEGER PRIMARY KEY,
+                    admin_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    employee_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    alert_type  VARCHAR(30) NOT NULL DEFAULT 'custom',
+                    title       VARCHAR(200) NOT NULL,
+                    message     TEXT NOT NULL,
+                    is_read     BOOLEAN DEFAULT FALSE,
+                    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    read_at     TIMESTAMP WITH TIME ZONE
+                )
+            """ if not IS_SQLITE else """
+                CREATE TABLE admin_alerts (
+                    id          INTEGER PRIMARY KEY,
+                    admin_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    employee_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    alert_type  TEXT NOT NULL DEFAULT 'custom',
+                    title       TEXT NOT NULL,
+                    message     TEXT NOT NULL,
+                    is_read     INTEGER DEFAULT 0,
+                    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    read_at     DATETIME
+                )
+            """))
+            print("  [OK] admin_alerts created")
+        else:
+            print("[OK] admin_alerts already exists")
+
+
+        # ── 9. admin_settings table ──────────────────────────────────────────────
+        if not table_exists(inspector, "admin_settings"):
+            print("Creating table: admin_settings ...")
+            conn.execute(text("""
+                CREATE TABLE admin_settings (
+                    id                         INTEGER PRIMARY KEY,
+                    admin_id                   INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                    high_load_threshold_count  INTEGER NOT NULL DEFAULT 0,
+                    min_confidence             REAL    NOT NULL DEFAULT 0.75,
+                    dashboard_refresh_sec      INTEGER NOT NULL DEFAULT 60,
+                    alert_templates            TEXT    NOT NULL DEFAULT '[]',
+                    updated_at                 DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """ if IS_SQLITE else """
+                CREATE TABLE admin_settings (
+                    id                         SERIAL PRIMARY KEY,
+                    admin_id                   INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                    high_load_threshold_count  INTEGER NOT NULL DEFAULT 0,
+                    min_confidence             REAL    NOT NULL DEFAULT 0.75,
+                    dashboard_refresh_sec      INTEGER NOT NULL DEFAULT 60,
+                    alert_templates            JSONB   NOT NULL DEFAULT '[]',
+                    updated_at                 TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """))
+            print("  [OK] admin_settings created")
+        else:
+            print("[OK] admin_settings already exists")
+
+        # ── 10. audit_logs table ─────────────────────────────────────────────────
+        if not table_exists(inspector, "audit_logs"):
+            print("Creating table: audit_logs ...")
+            conn.execute(text("""
+                CREATE TABLE audit_logs (
+                    id         INTEGER PRIMARY KEY,
+                    admin_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    action     TEXT    NOT NULL,
+                    target_id  INTEGER,
+                    detail     TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """ if IS_SQLITE else """
+                CREATE TABLE audit_logs (
+                    id         SERIAL PRIMARY KEY,
+                    admin_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    action     VARCHAR(60) NOT NULL,
+                    target_id  INTEGER,
+                    detail     TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """))
+            print("  [OK] audit_logs created")
+        else:
+            print("[OK] audit_logs already exists")
+
     print("\nMigration complete. Restart the backend server.")
 
 

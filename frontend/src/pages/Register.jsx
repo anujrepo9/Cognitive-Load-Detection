@@ -27,7 +27,7 @@ export default function Register() {
     try {
       const result = await authAPI.register({ name, email, password })
       login(result.user, result.access_token, result.refresh_token)
-      navigate("/dashboard")
+      navigate(result.user?.role === "admin" ? "/admin/dashboard" : "/dashboard")
     } catch (err) {
       setError(getErrorMessage(err, "Registration failed. Please try again."))
     } finally { setLoading(false) }

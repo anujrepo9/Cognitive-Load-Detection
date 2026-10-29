@@ -27,7 +27,7 @@ export default function Login() {
     try {
       const result = await authAPI.login({ email, password })
       login(result.user, result.access_token, result.refresh_token)
-      navigate("/dashboard")
+      navigate(result.user?.role === "admin" ? "/admin/dashboard" : "/dashboard")
     } catch (err) {
       setError(getErrorMessage(err, "Invalid credentials. Please try again."))
     } finally { setLoading(false) }

@@ -40,9 +40,11 @@ class LoginRequest(BaseModel):
 
 
 class UserOut(BaseModel):
-    id:    int
-    name:  str
-    email: str
+    id:         int
+    name:       str
+    email:      str
+    role:       str = "employee"
+    manager_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -353,3 +355,193 @@ class AppUsageSummaryResponse(BaseModel):
     period_hours:  int
     total_tracked: float       # total seconds across all apps
     apps:          list[AppUsageSummaryEntry]
+
+# ── Admin / Team Management ───────────────────────────────────────────────────
+
+class AdminRegisterEmployeeRequest(BaseModel):
+    """Admin creates an account for an employee."""
+    name:     str
+    email:    EmailStr
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v):
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return v
+
+
+class AdminUpdateEmployeeRequest(BaseModel):
+    """Admin updates an employee account."""
+    name:     Optional[str]      = None
+    email:    Optional[EmailStr] = None
+    password: Optional[str]      = None
+    is_active: Optional[bool]    = None
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v):
+        if v is not None and len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return v
+
+
+class EmployeeOut(BaseModel):
+    id:         int
+    name:       str
+    email:      str
+    is_active:  bool
+    created_at: Optional[datetime] = None
+    role:       str = "employee"
+
+    model_config = {"from_attributes": True}
+
+
+class EmployeeDetailOut(EmployeeOut):
+    """Employee summary including recent cognitive load snapshot."""
+    latest_load:       Optional[str]   = None
+    latest_confidence: Optional[float] = None
+    sessions_today:    int             = 0
+    avg_load_today:    Optional[str]   = None
+
+
+class AdminAlertRequest(BaseModel):
+    employee_id: int
+    alert_type:  str = "custom"    # high_load | low_load | custom
+    title:       str
+    message:     str
+
+    @field_validator("alert_type")
+    @classmethod
+    def valid_alert_type(cls, v):
+        allowed = {"high_load", "low_load", "custom"}
+        if v not in allowed:
+            raise ValueError(f"alert_type must be one of {allowed}")
+        return v
+
+
+class AdminAlertOut(BaseModel):
+    id:          int
+    admin_id:    int
+    employee_id: int
+    alert_type:  str
+    title:       str
+    message:     str
+    is_read:     bool
+    created_at:  Optional[datetime] = None
+    read_at:     Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class EmployeeAppUsageSummaryResponse(BaseModel):
+    employee_id:   int
+    employee_name: str
+    period_hours:  int
+    total_tracked: float
+    apps:          list  # list[AppUsageSummaryEntry] — reuses existing type
+
+
+class EmployeeCogniLoadSnapshot(BaseModel):
+    """Latest cognitive-load summary for one employee — used on admin dashboard."""
+    employee_id:       int
+    employee_name:     str
+    email:             str
+    latest_load:       Optional[str]   = None
+    latest_confidence: Optional[float] = None
+    sessions_today:    int             = 0
+    avg_load_today:    Optional[str]   = None
+    top_app:           Optional[str]   = None   # most-used app in last 8 h
+    unread_alerts:     int             = 0
+
+
+# ── Admin Settings ────────────────────────────────────────────────────────────
+
+class AlertTemplate(BaseModel):
+    label:      str
+    alert_type: str = "custom"
+    title:      str
+    message:    str
+
+    @field_validator("alert_type")
+    @classmethod
+    def valid_type(cls, v):
+        if v not in {"high_load", "low_load", "custom"}:
+            raise ValueError("alert_type must be high_load | low_load | custom")
+        return v
+
+
+class AdminSettingsOut(BaseModel):
+    high_load_threshold_count: int   = 0
+    min_confidence:            float = 0.75
+    dashboard_refresh_sec:     int   = 60
+    alert_templates:           list[AlertTemplate] = []
+    updated_at:                Optional[datetime]  = None
+
+    model_config = {"from_attributes": True}
+
+
+class AdminSettingsUpdate(BaseModel):
+    high_load_threshold_count: Optional[int]               = None
+    min_confidence:            Optional[float]             = None
+    dashboard_refresh_sec:     Optional[int]               = None
+    alert_templates:           Optional[list[AlertTemplate]] = None
+
+    @field_validator("min_confidence")
+    @classmethod
+    def confidence_range(cls, v):
+        if v is not None and not (0.0 <= v <= 1.0):
+            raise ValueError("min_confidence must be between 0 and 1")
+        return v
+
+    @field_validator("high_load_threshold_count")
+    @classmethod
+    def threshold_non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("high_load_threshold_count must be >= 0")
+        return v
+
+    @field_validator("alert_templates")
+    @classmethod
+    def max_five_templates(cls, v):
+        if v is not None and len(v) > 5:
+            raise ValueError("Maximum 5 alert templates allowed")
+        return v
+
+
+# ── Promote / Transfer ────────────────────────────────────────────────────────
+
+class PromoteRequest(BaseModel):
+    """Body for POST /admin/employees/{id}/promote"""
+    # No body fields needed — the endpoint is self-describing.
+    # Kept as a schema so OpenAPI documents it properly.
+    pass
+
+
+class TransferTeamRequest(BaseModel):
+    """
+    Transfer all (or selected) employees from the calling admin to another admin.
+    Pass employee_ids to transfer only specific members; omit to transfer everyone.
+    """
+    target_admin_id: int
+    employee_ids:    Optional[list[int]] = None   # None → all team members
+
+
+class TransferTeamResponse(BaseModel):
+    transferred_count: int
+    target_admin_id:   int
+    target_admin_name: str
+
+
+# ── Audit Log ─────────────────────────────────────────────────────────────────
+
+class AuditLogOut(BaseModel):
+    id:         int
+    admin_id:   int
+    action:     str
+    target_id:  Optional[int]  = None
+    detail:     Optional[str]  = None
+    created_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}

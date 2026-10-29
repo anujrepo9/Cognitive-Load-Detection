@@ -7,6 +7,7 @@ import {
   Sparkles, Info, Trash2, BellOff, Clock,
 } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
+import { adminAPI } from "../../services/api"
 
 // ── Search items ─────────────────────────────────────────────────────────────
 const SEARCH_ITEMS = [
@@ -258,12 +259,50 @@ export default function TopNav() {
   const notifRef       = useRef(null)
   const searchInputRef = useRef(null)
 
-  const unreadCount = notifications.length
+  const { isAdmin } = useAuth()
 
-  // Dismiss single notification
+  // Fetch real admin-sent alerts for employees and inject into the notification list
+  useEffect(() => {
+    if (isAdmin) return   // admins manage alerts on their own pages
+    let cancelled = false
+    adminAPI.myAlerts().then((alerts) => {
+      if (cancelled) return
+      const unread = alerts.filter((a) => !a.is_read)
+      if (!unread.length) return
+      const mapped = unread.map((a) => ({
+        id:     `alert-${a.id}`,
+        _alertId: a.id,
+        icon:   a.alert_type === "high_load" ? "AlertTriangle" : "Info",
+        color:  a.alert_type === "high_load" ? "#FF5364" : a.alert_type === "low_load" ? "#FFB547" : "#00D9E8",
+        bg:     a.alert_type === "high_load" ? "rgba(255,83,100,0.10)" : a.alert_type === "low_load" ? "rgba(255,181,71,0.10)" : "rgba(0,217,232,0.10)",
+        border: a.alert_type === "high_load" ? "rgba(255,83,100,0.20)" : a.alert_type === "low_load" ? "rgba(255,181,71,0.20)" : "rgba(0,217,232,0.20)",
+        title:  a.title,
+        desc:   a.message,
+        time:   "",
+        ts:     new Date(a.created_at).getTime(),
+        fromAdmin: true,
+      }))
+      setNotifications((prev) => {
+        // Remove any previously injected admin alerts, then prepend fresh ones
+        const filtered = prev.filter((n) => !n.fromAdmin)
+        return [...mapped, ...filtered]
+      })
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [isAdmin])
+
+  // Mark an admin alert as read when dismissed
   const dismiss = useCallback((id) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id))
+    setNotifications((prev) => {
+      const n = prev.find((x) => x.id === id)
+      if (n?.fromAdmin && n._alertId) {
+        adminAPI.markAlertRead(n._alertId).catch(() => {})
+      }
+      return prev.filter((x) => x.id !== id)
+    })
   }, [])
+
+  const unreadCount = notifications.length
 
   // Clear all notifications
   const clearAll = useCallback(() => {

@@ -4,17 +4,24 @@ import { AnimatePresence, motion } from "framer-motion"
 import {
   LayoutDashboard, Activity, History, BarChart3, FileText,
   Lightbulb, Settings, User, LogOut, BrainCircuit, Menu, X,
-  ChevronRight, Zap,
+  ChevronRight, Users, ShieldCheck, Bell, Settings2,
 } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
 
-const links = [
+const employeeLinks = [
   { to: "/dashboard",       icon: LayoutDashboard, label: "Dashboard"       },
   { to: "/live",            icon: Activity,        label: "Live Monitoring" },
   { to: "/history",         icon: History,         label: "Session History" },
   { to: "/analytics",       icon: BarChart3,       label: "Analytics"       },
   { to: "/reports",         icon: FileText,        label: "Reports"         },
   { to: "/recommendations", icon: Lightbulb,       label: "Recommendations" },
+]
+
+const adminLinks = [
+  { to: "/admin/dashboard",  icon: ShieldCheck, label: "Team Overview"  },
+  { to: "/admin/employees",  icon: Users,       label: "Employees"      },
+  { to: "/admin/alerts",     icon: Bell,        label: "Send Alerts"    },
+  { to: "/admin/settings",   icon: Settings2,   label: "Admin Settings" },
 ]
 
 const bottomLinks = [
@@ -36,7 +43,6 @@ function NavItem({ to, icon: Icon, label, onClick }) {
             }`}
           aria-current={isActive ? "page" : undefined}
         >
-          {/* Active cyan left bar */}
           {isActive && (
             <span aria-hidden="true"
               className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-4 rounded-full bg-[#00D9E8]"
@@ -61,12 +67,12 @@ function NavItem({ to, icon: Icon, label, onClick }) {
   )
 }
 
-function SidebarContent({ user, onLogout, onNavClick }) {
+function SidebarContent({ user, isAdmin, onLogout, onNavClick }) {
   return (
     <div className="flex flex-col h-full">
       {/* Brand */}
       <div className="flex items-center px-5 h-16 shrink-0">
-        <NavLink to="/dashboard" onClick={onNavClick}
+        <NavLink to={isAdmin ? "/admin/dashboard" : "/dashboard"} onClick={onNavClick}
           className="flex items-center gap-3 focus-visible:outline-none rounded-lg p-1 -m-1"
           aria-label="CogniLoad — Dashboard">
           <div className="w-8 h-8 rounded-[10px] sidebar-brand-gradient
@@ -80,20 +86,32 @@ function SidebarContent({ user, onLogout, onNavClick }) {
             </span>
             <div className="text-[10px] tracking-[0.08em] uppercase font-semibold mt-0.5"
               style={{ color: "#536477" }}>
-              AI Command Center
+              {isAdmin ? "Admin Portal" : "AI Command Center"}
             </div>
           </div>
         </NavLink>
       </div>
 
-      {/* Divider */}
       <div className="h-px mx-4" style={{ background: "rgba(100,170,190,0.10)" }} />
 
-      {/* Nav */}
       <nav aria-label="Main navigation" className="flex-1 py-4 overflow-y-auto space-y-0.5">
+
+        {/* Admin section */}
+        {isAdmin && (
+          <>
+            <p className="px-5 mb-2 text-[10px] font-semibold tracking-[0.10em] uppercase"
+              style={{ color: "#7775FF" }}>Admin</p>
+            {adminLinks.map(({ to, icon, label }) => (
+              <NavItem key={to} to={to} icon={icon} label={label} onClick={onNavClick} />
+            ))}
+            <div className="my-4 mx-4 h-px" style={{ background: "rgba(100,170,190,0.10)" }} />
+          </>
+        )}
+
+        {/* Employee section — always visible (admin can also check own data) */}
         <p className="px-5 mb-2 text-[10px] font-semibold tracking-[0.10em] uppercase"
-          style={{ color: "#536477" }}>Navigation</p>
-        {links.map(({ to, icon, label }) => (
+          style={{ color: "#536477" }}>{isAdmin ? "My Data" : "Navigation"}</p>
+        {employeeLinks.map(({ to, icon, label }) => (
           <NavItem key={to} to={to} icon={icon} label={label} onClick={onNavClick} />
         ))}
 
@@ -105,23 +123,37 @@ function SidebarContent({ user, onLogout, onNavClick }) {
         ))}
       </nav>
 
-      {/* System status */}
-      <div className="mx-3 mb-3 p-3 rounded-lg"
-        style={{ background: "rgba(0,217,232,0.05)", border: "1px solid rgba(0,217,232,0.12)" }}>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="live-dot w-1.5 h-1.5 rounded-full bg-[#37D9A0]" />
-          <span className="text-[10px] font-semibold tracking-[0.08em] uppercase text-[#37D9A0]">
-            System Online
-          </span>
+      {/* Role badge */}
+      {isAdmin && (
+        <div className="mx-3 mb-3 p-3 rounded-lg"
+          style={{ background: "rgba(119,117,255,0.07)", border: "1px solid rgba(119,117,255,0.20)" }}>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-3.5 h-3.5" style={{ color: "#7775FF" }} />
+            <span className="text-[10px] font-semibold tracking-[0.08em] uppercase" style={{ color: "#7775FF" }}>
+              Admin Account
+            </span>
+          </div>
         </div>
-        <div className="text-[10px] text-[#536477]">All services nominal</div>
-      </div>
+      )}
+
+      {/* System status */}
+      {!isAdmin && (
+        <div className="mx-3 mb-3 p-3 rounded-lg"
+          style={{ background: "rgba(0,217,232,0.05)", border: "1px solid rgba(0,217,232,0.12)" }}>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="live-dot w-1.5 h-1.5 rounded-full bg-[#37D9A0]" />
+            <span className="text-[10px] font-semibold tracking-[0.08em] uppercase text-[#37D9A0]">
+              System Online
+            </span>
+          </div>
+          <div className="text-[10px] text-[#536477]">All services nominal</div>
+        </div>
+      )}
 
       {/* User + logout */}
       <div className="border-t mx-0 px-3 pb-3 pt-3"
         style={{ borderColor: "rgba(100,170,190,0.10)" }}>
-        <div className="flex items-center gap-3 p-2 rounded-lg
-          transition-colors group cursor-pointer"
+        <div className="flex items-center gap-3 p-2 rounded-lg transition-colors group cursor-pointer"
           style={{ background: "transparent" }}
           onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}
           onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -151,7 +183,7 @@ function SidebarContent({ user, onLogout, onNavClick }) {
   )
 }
 
-function MobileDrawer({ open, onClose, user, onLogout }) {
+function MobileDrawer({ open, onClose, user, isAdmin, onLogout }) {
   const drawerRef = useRef(null)
   useEffect(() => {
     if (!open) return
@@ -185,7 +217,7 @@ function MobileDrawer({ open, onClose, user, onLogout }) {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <SidebarContent user={user} onLogout={onLogout} onNavClick={onClose} />
+            <SidebarContent user={user} isAdmin={isAdmin} onLogout={onLogout} onNavClick={onClose} />
           </motion.div>
         </>
       )}
@@ -194,7 +226,7 @@ function MobileDrawer({ open, onClose, user, onLogout }) {
 }
 
 export default function Sidebar() {
-  const { user, logout } = useAuth()
+  const { user, logout, isAdmin } = useAuth()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -202,7 +234,6 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile toggle */}
       <button
         onClick={() => setMobileOpen(true)}
         className="lg:hidden fixed top-3 left-3 z-30 p-2 glass"
@@ -215,16 +246,16 @@ export default function Sidebar() {
         open={mobileOpen}
         onClose={() => setMobileOpen(false)}
         user={user}
+        isAdmin={isAdmin}
         onLogout={logout}
       />
 
-      {/* Desktop sidebar */}
       <aside className="hidden lg:flex w-60 h-screen sticky top-0 flex-col shrink-0 z-30"
         style={{
           background: "#050B10",
           borderRight: "1px solid rgba(100,170,190,0.10)",
         }}>
-        <SidebarContent user={user} onLogout={logout} />
+        <SidebarContent user={user} isAdmin={isAdmin} onLogout={logout} />
       </aside>
     </>
   )
