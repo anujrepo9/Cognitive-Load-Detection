@@ -60,3 +60,9 @@ RATE_LIMIT_LOGIN_MIN  = int(os.getenv("RATE_LIMIT_LOGIN_MIN", 5))       # attemp
 RATE_LIMIT_LOGIN_WINDOW = int(os.getenv("RATE_LIMIT_LOGIN_WINDOW", 60))  # seconds
 RATE_LIMIT_REGISTER_MIN = int(os.getenv("RATE_LIMIT_REGISTER_MIN", 5))
 RATE_LIMIT_REGISTER_WINDOW = int(os.getenv("RATE_LIMIT_REGISTER_WINDOW", 300))  # seconds
+
+# ── Account-type / role system ────────────────────────────────────────────────
+# Set ADMIN_REGISTRATION_CODE in your .env to a non-empty secret.
+# Anyone who supplies this code during /auth/register will be given role="admin".
+# Leave empty / unset to disable self-service admin registration entirely.
+ADMIN_REGISTRATION_CODE = os.getenv("ADMIN_REGISTRATION_CODE", "")

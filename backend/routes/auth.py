@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db
 from database.models import User
+from config import ADMIN_REGISTRATION_CODE
 from auth.jwt import (
     hash_password, verify_password, create_access_token,
     create_refresh_token, validate_refresh_token, revoke_refresh_token,
@@ -35,10 +36,31 @@ def register(
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
 
+    # ── Role assignment rules ─────────────────────────────────────────────────
+    # • "admin"    → only allowed when ADMIN_REGISTRATION_CODE is set AND the
+    #                caller supplies the matching code.
+    # • "employee" → self-service; no code required (admins add employees via
+    #                POST /admin/employees, but employees may also self-register).
+    # • "user"     → default individual account; no code required.
+    requested_role = body.role  # already validated by Pydantic
+
+    if requested_role == "admin":
+        if not ADMIN_REGISTRATION_CODE:
+            raise HTTPException(
+                status_code=403,
+                detail="Admin self-registration is disabled on this server.",
+            )
+        if body.admin_code != ADMIN_REGISTRATION_CODE:
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid admin registration code.",
+            )
+
     user = User(
         name=body.name,
         email=body.email,
         password=hash_password(body.password),
+        role=requested_role,
     )
     db.add(user)
     db.commit()

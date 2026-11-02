@@ -67,7 +67,7 @@ function NavItem({ to, icon: Icon, label, onClick }) {
   )
 }
 
-function SidebarContent({ user, isAdmin, onLogout, onNavClick }) {
+function SidebarContent({ user, isAdmin, isEmployee, onLogout, onNavClick }) {
   return (
     <div className="flex flex-col h-full">
       {/* Brand */}
@@ -86,7 +86,7 @@ function SidebarContent({ user, isAdmin, onLogout, onNavClick }) {
             </span>
             <div className="text-[10px] tracking-[0.08em] uppercase font-semibold mt-0.5"
               style={{ color: "#536477" }}>
-              {isAdmin ? "Admin Portal" : "AI Command Center"}
+              {isAdmin ? "Admin Portal" : isEmployee ? "Employee Dashboard" : "Personal Dashboard"}
             </div>
           </div>
         </NavLink>
@@ -110,7 +110,7 @@ function SidebarContent({ user, isAdmin, onLogout, onNavClick }) {
 
         {/* Employee section — always visible (admin can also check own data) */}
         <p className="px-5 mb-2 text-[10px] font-semibold tracking-[0.10em] uppercase"
-          style={{ color: "#536477" }}>{isAdmin ? "My Data" : "Navigation"}</p>
+          style={{ color: "#536477" }}>{isAdmin ? "My Data" : isEmployee ? "My Workspace" : "Navigation"}</p>
         {employeeLinks.map(({ to, icon, label }) => (
           <NavItem key={to} to={to} icon={icon} label={label} onClick={onNavClick} />
         ))}
@@ -124,7 +124,7 @@ function SidebarContent({ user, isAdmin, onLogout, onNavClick }) {
       </nav>
 
       {/* Role badge */}
-      {isAdmin && (
+      {isAdmin ? (
         <div className="mx-3 mb-3 p-3 rounded-lg"
           style={{ background: "rgba(119,117,255,0.07)", border: "1px solid rgba(119,117,255,0.20)" }}>
           <div className="flex items-center gap-2">
@@ -134,19 +134,27 @@ function SidebarContent({ user, isAdmin, onLogout, onNavClick }) {
             </span>
           </div>
         </div>
-      )}
-
-      {/* System status */}
-      {!isAdmin && (
+      ) : isEmployee ? (
+        <div className="mx-3 mb-3 p-3 rounded-lg"
+          style={{ background: "rgba(0,217,232,0.05)", border: "1px solid rgba(0,217,232,0.12)" }}>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="live-dot w-1.5 h-1.5 rounded-full bg-[#7775FF]" />
+            <span className="text-[10px] font-semibold tracking-[0.08em] uppercase" style={{ color: "#7775FF" }}>
+              Employee Account
+            </span>
+          </div>
+          <div className="text-[10px] text-[#536477]">Managed by organisation</div>
+        </div>
+      ) : (
         <div className="mx-3 mb-3 p-3 rounded-lg"
           style={{ background: "rgba(0,217,232,0.05)", border: "1px solid rgba(0,217,232,0.12)" }}>
           <div className="flex items-center gap-2 mb-1">
             <span className="live-dot w-1.5 h-1.5 rounded-full bg-[#37D9A0]" />
             <span className="text-[10px] font-semibold tracking-[0.08em] uppercase text-[#37D9A0]">
-              System Online
+              Personal Account
             </span>
           </div>
-          <div className="text-[10px] text-[#536477]">All services nominal</div>
+          <div className="text-[10px] text-[#536477]">Individual tracking mode</div>
         </div>
       )}
 
@@ -183,7 +191,7 @@ function SidebarContent({ user, isAdmin, onLogout, onNavClick }) {
   )
 }
 
-function MobileDrawer({ open, onClose, user, isAdmin, onLogout }) {
+function MobileDrawer({ open, onClose, user, isAdmin, isEmployee, onLogout }) {
   const drawerRef = useRef(null)
   useEffect(() => {
     if (!open) return
@@ -217,7 +225,7 @@ function MobileDrawer({ open, onClose, user, isAdmin, onLogout }) {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <SidebarContent user={user} isAdmin={isAdmin} onLogout={onLogout} onNavClick={onClose} />
+            <SidebarContent user={user} isAdmin={isAdmin} isEmployee={isEmployee} onLogout={onLogout} onNavClick={onClose} />
           </motion.div>
         </>
       )}
@@ -226,7 +234,7 @@ function MobileDrawer({ open, onClose, user, isAdmin, onLogout }) {
 }
 
 export default function Sidebar() {
-  const { user, logout, isAdmin } = useAuth()
+  const { user, logout, isAdmin, isEmployee } = useAuth()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -247,6 +255,7 @@ export default function Sidebar() {
         onClose={() => setMobileOpen(false)}
         user={user}
         isAdmin={isAdmin}
+        isEmployee={isEmployee}
         onLogout={logout}
       />
 
@@ -255,7 +264,7 @@ export default function Sidebar() {
           background: "#050B10",
           borderRight: "1px solid rgba(100,170,190,0.10)",
         }}>
-        <SidebarContent user={user} isAdmin={isAdmin} onLogout={logout} />
+        <SidebarContent user={user} isAdmin={isAdmin} isEmployee={isEmployee} onLogout={logout} />
       </aside>
     </>
   )

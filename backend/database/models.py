@@ -22,8 +22,8 @@ class User(Base):
     is_active   = Column(Boolean, default=True)
     created_at  = Column(DateTime(timezone=True), default=utcnow)
  
-    # "employee" (default) | "admin"
-    role        = Column(String(20), default="employee", nullable=False)
+    # "user" (default / individual) | "employee" (org member) | "admin" (org manager)
+    role        = Column(String(20), default="user", nullable=False)
     # For employees: points to their admin/manager's user.id
     manager_id  = Column(Integer, ForeignKey("users.id"), nullable=True)
  

@@ -259,11 +259,11 @@ export default function TopNav() {
   const notifRef       = useRef(null)
   const searchInputRef = useRef(null)
 
-  const { isAdmin } = useAuth()
+  const { isAdmin, isEmployee } = useAuth()
 
-  // Fetch real admin-sent alerts for employees and inject into the notification list
+  // Fetch real admin-sent alerts — only employees belong to a managed team
   useEffect(() => {
-    if (isAdmin) return   // admins manage alerts on their own pages
+    if (!isEmployee) return   // admins and standalone users have no manager alerts
     let cancelled = false
     adminAPI.myAlerts().then((alerts) => {
       if (cancelled) return
@@ -289,7 +289,7 @@ export default function TopNav() {
       })
     }).catch(() => {})
     return () => { cancelled = true }
-  }, [isAdmin])
+  }, [isEmployee])
 
   // Mark an admin alert as read when dismissed
   const dismiss = useCallback((id) => {

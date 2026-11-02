@@ -43,9 +43,12 @@ pub struct JwtSecret(pub String);
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct UserInfo {
-    pub id:    serde_json::Value,
-    pub name:  String,
-    pub email: String,
+    pub id:         serde_json::Value,
+    pub name:       String,
+    pub email:      String,
+    /// "user" | "employee" | "admin"
+    pub role:       String,
+    pub manager_id: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -194,18 +197,37 @@ fn sha256_hex(data: &[u8]) -> String {
 
 #[tauri::command]
 pub async fn register(
-    state: tauri::State<'_, DbPath>,
-    jwt:   tauri::State<'_, JwtSecret>,
-    name:     String,
-    email:    String,
-    password: String,
+    state:      tauri::State<'_, DbPath>,
+    jwt:        tauri::State<'_, JwtSecret>,
+    name:       String,
+    email:      String,
+    password:   String,
+    role:       Option<String>,   // "user" | "employee" | "admin"  (default: "user")
+    admin_code: Option<String>,   // required when role == "admin"
 ) -> Result<AuthResponse, String> {
     let email = email.trim().to_lowercase();
     let name  = name.trim().to_string();
 
-    if name.is_empty()     { return Err("Name cannot be empty".into()); }
-    if email.is_empty()    { return Err("Email cannot be empty".into()); }
-    if password.len() < 6  { return Err("Password must be at least 6 characters".into()); }
+    if name.is_empty()    { return Err("Name cannot be empty".into()); }
+    if email.is_empty()   { return Err("Email cannot be empty".into()); }
+    if password.len() < 6 { return Err("Password must be at least 6 characters".into()); }
+
+    // ── Role validation ───────────────────────────────────────────────────────
+    let role = role.unwrap_or_else(|| "user".to_string());
+    let valid_roles = ["user", "employee", "admin"];
+    if !valid_roles.contains(&role.as_str()) {
+        return Err(format!("role must be one of: {}", valid_roles.join(", ")));
+    }
+    if role == "admin" {
+        let server_code = std::env::var("ADMIN_REGISTRATION_CODE").unwrap_or_default();
+        if server_code.is_empty() {
+            return Err("Admin self-registration is disabled on this server.".into());
+        }
+        match &admin_code {
+            Some(code) if code == &server_code => {}
+            _ => return Err("Invalid admin registration code.".into()),
+        }
+    }
 
     let conn = open(&state.0).map_err(|e| e.to_string())?;
 
@@ -225,8 +247,8 @@ pub async fn register(
     let pw_hash = hash(&password, DEFAULT_COST).map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO users (name, email, password) VALUES (?1, ?2, ?3)",
-        params![name, email, pw_hash],
+        "INSERT INTO users (name, email, password, role) VALUES (?1, ?2, ?3, ?4)",
+        params![name, email, pw_hash, role],
     )
     .map_err(|e| e.to_string())?;
 
@@ -246,9 +268,11 @@ pub async fn register(
         access_token,
         refresh_token,
         user: UserInfo {
-            id:    user_id.into(),
+            id:         user_id.into(),
             name,
             email,
+            role,
+            manager_id: None,
         },
     })
 }
@@ -263,17 +287,18 @@ pub async fn login(
     let email = email.trim().to_lowercase();
     let conn  = open(&state.0).map_err(|e| e.to_string())?;
 
-    // Fetch user row
-    let row: Option<(i64, String, String, String, i64)> = conn
+    // Fetch user row — include role and manager_id so the frontend knows account type
+    let row: Option<(i64, String, String, String, i64, String, Option<i64>)> = conn
         .query_row(
-            "SELECT id, name, email, password, is_active
+            "SELECT id, name, email, password, is_active,
+                    COALESCE(role, 'user'), manager_id
              FROM users WHERE email = ?1 LIMIT 1",
             params![email],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
         )
         .ok();
 
-    let (user_id, name, stored_email, pw_hash, is_active) =
+    let (user_id, name, stored_email, pw_hash, is_active, role, manager_id) =
         row.ok_or_else(|| "Invalid email or password".to_string())?;
 
     if is_active == 0 {
@@ -291,9 +316,11 @@ pub async fn login(
         access_token,
         refresh_token,
         user: UserInfo {
-            id:    user_id.into(),
+            id: user_id.into(),
             name,
             email: stored_email,
+            role,
+            manager_id,
         },
     })
 }
@@ -331,12 +358,13 @@ pub async fn refresh_token(
     let new_access  = make_access_token(user_id, &jwt.0)?;
     let new_refresh = make_refresh_token(&conn, user_id)?;
 
-    // Fetch user profile
-    let (name, email): (String, String) = conn
+    // Fetch user profile including role
+    let (name, email, role, manager_id): (String, String, String, Option<i64>) = conn
         .query_row(
-            "SELECT name, email FROM users WHERE id = ?1",
+            "SELECT name, email, COALESCE(role, 'user'), manager_id
+             FROM users WHERE id = ?1",
             params![user_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
         .map_err(|_| "User not found".to_string())?;
 
@@ -344,9 +372,11 @@ pub async fn refresh_token(
         access_token:  new_access,
         refresh_token: new_refresh,
         user: UserInfo {
-            id:    user_id.into(),
+            id: user_id.into(),
             name,
             email,
+            role,
+            manager_id,
         },
     })
 }
@@ -360,11 +390,12 @@ pub async fn get_current_user(
     let user_id = decode_access_token(&token, &jwt.0)?;
     let conn    = open(&state.0).map_err(|e| e.to_string())?;
 
-    let (name, email): (String, String) = conn
+    let (name, email, role, manager_id): (String, String, String, Option<i64>) = conn
         .query_row(
-            "SELECT name, email FROM users WHERE id = ?1 AND is_active = 1",
+            "SELECT name, email, COALESCE(role, 'user'), manager_id
+             FROM users WHERE id = ?1 AND is_active = 1",
             params![user_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
         .map_err(|_| "User not found or account deactivated".to_string())?;
 
@@ -372,5 +403,7 @@ pub async fn get_current_user(
         id: user_id.into(),
         name,
         email,
+        role,
+        manager_id,
     })
 }

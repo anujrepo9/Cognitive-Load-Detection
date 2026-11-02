@@ -3,12 +3,13 @@ import { motion, AnimatePresence } from "framer-motion"
 import {
   Mail, User, Save, Loader2, AlertCircle, CheckCircle2,
   KeyRound, Eye, EyeOff, Bell, AlertTriangle, ShieldCheck,
+  UserCog, UserCircle2,
 } from "lucide-react"
 import { useAuth } from "../context/AuthContext"
 import { authAPI, adminAPI, getErrorMessage } from "../services/api"
 
 export default function Profile() {
-  const { user, login, isAdmin } = useAuth()
+  const { user, login, isAdmin, isEmployee, isUser } = useAuth()
 
   // ── Profile fields ──────────────────────────────────────────────────────────
   const [name,  setName]  = useState(user?.name  || "")
@@ -26,12 +27,12 @@ export default function Profile() {
   const [pwdErr,  setPwdErr]  = useState(null)
   const [pwdBusy, setPwdBusy] = useState(false)
 
-  // ── My Alerts (employees only) ──────────────────────────────────────────────
+  // ── My Alerts (employees only — not standalone users or admins) ─────────────
   const [alerts,       setAlerts]       = useState([])
   const [alertsLoading,setAlertsLoading]= useState(false)
 
   useEffect(() => {
-    if (isAdmin) return
+    if (!isEmployee) return   // only employees have manager-sent alerts
     setAlertsLoading(true)
     adminAPI.myAlerts()
       .then(setAlerts)
@@ -113,10 +114,16 @@ export default function Profile() {
                 <ShieldCheck className="w-3 h-3" /> Admin
               </span>
             )}
-            {!isAdmin && (
+            {isEmployee && (
               <span className="inline-flex items-center gap-1.5 mt-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                style={{ background: "rgba(119,117,255,0.12)", border: "1px solid rgba(119,117,255,0.25)", color: "#7775FF" }}>
-                <ShieldCheck className="w-3 h-3" /> Employee
+                style={{ background: "rgba(0,217,232,0.10)", border: "1px solid rgba(0,217,232,0.22)", color: "#00D9E8" }}>
+                <UserCog className="w-3 h-3" /> Employee
+              </span>
+            )}
+            {isUser && (
+              <span className="inline-flex items-center gap-1.5 mt-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: "rgba(55,217,160,0.10)", border: "1px solid rgba(55,217,160,0.22)", color: "#37D9A0" }}>
+                <UserCircle2 className="w-3 h-3" /> Personal
               </span>
             )}
           </div>
@@ -247,8 +254,8 @@ export default function Profile() {
         </form>
       </div>
 
-      {/* ── My Alerts — employees only ── */}
-      {!isAdmin && (
+      {/* ── My Alerts — employees only (not standalone users or admins) ── */}
+      {isEmployee && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}

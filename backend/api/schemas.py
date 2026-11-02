@@ -22,15 +22,27 @@ def _as_utc(value):
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):
-    name:     str
-    email:    EmailStr
-    password: str
+    name:       str
+    email:      EmailStr
+    password:   str
+    # "user" (individual, default) | "employee" | "admin"
+    role:       str = "user"
+    # Required only when role == "admin"; must match ADMIN_REGISTRATION_CODE in .env
+    admin_code: Optional[str] = None
 
     @field_validator("password")
     @classmethod
     def password_min_length(cls, v):
         if len(v) < 6:
             raise ValueError("Password must be at least 6 characters")
+        return v
+
+    @field_validator("role")
+    @classmethod
+    def role_valid(cls, v):
+        allowed = {"user", "employee", "admin"}
+        if v not in allowed:
+            raise ValueError(f"role must be one of: {', '.join(sorted(allowed))}")
         return v
 
 
@@ -43,7 +55,7 @@ class UserOut(BaseModel):
     id:         int
     name:       str
     email:      str
-    role:       str = "employee"
+    role:       str = "user"   # "user" | "employee" | "admin"
     manager_id: Optional[int] = None
 
     model_config = {"from_attributes": True}

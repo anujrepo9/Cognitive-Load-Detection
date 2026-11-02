@@ -271,9 +271,11 @@ export function getErrorMessage(err, fallback = "Something went wrong. Please tr
 // ── Auth API ──────────────────────────────────────────────────────────────────
 
 export const authAPI = {
-  register: ({ name, email, password }) => {
-    if (isTauri()) return tauriCall("register", { name, email, password })
-    return httpFetch("POST", "/auth/register", { body: { name, email, password }, token: "" })
+  register: ({ name, email, password, role = "user", admin_code }) => {
+    if (isTauri()) return tauriCall("register", { name, email, password, role, admin_code: admin_code ?? null })
+    const body = { name, email, password, role }
+    if (admin_code) body.admin_code = admin_code
+    return httpFetch("POST", "/auth/register", { body, token: "" })
   },
 
   login: ({ email, password }) => {

@@ -158,10 +158,12 @@ def run():
         # ── 6. users.role column ─────────────────────────────────────────────────
         if not col_exists(inspector, "users", "role"):
             print("Adding column: users.role ...")
+            # Default is "user" (individual / personal account) for brand-new installs.
+            # On existing DBs the column already exists so this branch is skipped.
             conn.execute(text(
-                "ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'employee'"
+                "ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user'"
                 if not IS_SQLITE else
-                "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'employee'"
+                "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'"
             ))
             print("  [OK] users.role added")
         else:

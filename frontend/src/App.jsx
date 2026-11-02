@@ -66,8 +66,8 @@ function AdminLayout() {
 }
 
 function GuestLayout() {
-  const { isAuth } = useAuth()
-  if (isAuth) return <Navigate to="/dashboard" replace />
+  const { isAuth, isAdmin } = useAuth()
+  if (isAuth) return <Navigate to={isAdmin ? "/admin/dashboard" : "/dashboard"} replace />
   return <Outlet />
 }
 
