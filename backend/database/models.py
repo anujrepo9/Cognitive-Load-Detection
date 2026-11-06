@@ -26,6 +26,7 @@ class User(Base):
     role        = Column(String(20), default="user", nullable=False)
     # For employees: points to their admin/manager's user.id
     manager_id  = Column(Integer, ForeignKey("users.id"), nullable=True)
+    department  = Column(String(120), nullable=True)    
  
     sessions        = relationship("Session", back_populates="user",
                                    cascade="all, delete-orphan")
@@ -182,6 +183,12 @@ class AdminSettings(Base):
     # consecutive predictions (each prediction ≈ flush_interval_sec seconds).
     # 0 = auto-alerts disabled.
     high_load_threshold_count = Column(Integer, default=0)
+
+    # ── NEW: time-based threshold (minutes) ───────────────────────────────────
+    # If > 0, auto-alert fires when high load persists for this many *minutes*.
+    # Takes precedence over high_load_threshold_count when both are non-zero.
+    # 0 = use count-based threshold only.
+    high_load_threshold_minutes = Column(Integer, default=0)
  
     # Minimum confidence required before a prediction counts toward the threshold.
     # Range 0.0–1.0  (default 0.75 = 75 %).
@@ -229,6 +236,8 @@ class AdminAlert(Base):
     title       = Column(String(200), nullable=False)
     message     = Column(Text, nullable=False)
     is_read     = Column(Boolean, default=False)
+    # True = fired automatically by the high-load background job
+    is_auto     = Column(Boolean, default=False, nullable=False)
     created_at  = Column(DateTime(timezone=True), default=utcnow, index=True)
     read_at     = Column(DateTime(timezone=True), nullable=True)
  
@@ -255,4 +264,3 @@ class AuditLog(Base):
     created_at  = Column(DateTime(timezone=True), default=utcnow, index=True)
 
     admin = relationship("User", foreign_keys=[admin_id], back_populates="audit_logs")
- 

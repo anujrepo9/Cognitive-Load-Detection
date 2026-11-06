@@ -24,6 +24,7 @@ from core.errors import register_exception_handlers
 from core.middleware import RequestIDMiddleware, MaxBodySizeMiddleware
 from database.db import init_db, dispose_engine
 from services.predictor import get_predictor
+from services.auto_alert import start_auto_alert_loop, stop_auto_alert_loop
 from routes import auth, behavior, prediction, dashboard, recommendation, session, reports, analytics
 from routes import settings as settings_route
 from routes import model as model_route
@@ -41,10 +42,14 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Loading ML model…")
     get_predictor()
+    logger.info("Starting auto-alert background loop…")
+    start_auto_alert_loop()
     logger.info("Backend ready.")
     try:
         yield
     finally:
+        logger.info("Shutting down — stopping auto-alert loop…")
+        stop_auto_alert_loop()
         logger.info("Shutting down — disposing database engine.")
         dispose_engine()
 
@@ -98,7 +103,7 @@ app.include_router(analytics.router,        prefix="/api")
 app.include_router(settings_route.router,   prefix="/api")
 app.include_router(model_route.router,      prefix="/api")
 app.include_router(app_usage_route.router,  prefix="/api")
-app.include_router(admin_route.router,        prefix="/api")
+app.include_router(admin_route.router,      prefix="/api")
 app.include_router(ws_route.router)
 
 # ── Health check ──────────────────────────────────────────────────────────────

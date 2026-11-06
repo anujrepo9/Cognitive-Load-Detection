@@ -4,16 +4,6 @@ from pydantic import BaseModel, EmailStr, field_validator
 
 
 def _as_utc(value):
-    """Attach a UTC tzinfo to naive datetimes before they're serialized.
-
-    SQLite (unlike Postgres) doesn't actually persist timezone info even
-    though the SQLAlchemy column is declared DateTime(timezone=True) — every
-    value that comes back from the DB is a naive datetime, even though it's
-    always UTC (see database/models.py's utcnow()). Left naive, Pydantic
-    serializes it without a "Z"/offset suffix, so the browser's
-    `new Date(...)` parses it as LOCAL time instead of UTC — e.g. for a user
-    in IST (UTC+5:30), "just started" sessions show up as 330 minutes old.
-    """
     if isinstance(value, datetime) and value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value
@@ -25,9 +15,7 @@ class RegisterRequest(BaseModel):
     name:       str
     email:      EmailStr
     password:   str
-    # "user" (individual, default) | "employee" | "admin"
     role:       str = "user"
-    # Required only when role == "admin"; must match ADMIN_REGISTRATION_CODE in .env
     admin_code: Optional[str] = None
 
     @field_validator("password")
@@ -55,7 +43,7 @@ class UserOut(BaseModel):
     id:         int
     name:       str
     email:      str
-    role:       str = "user"   # "user" | "employee" | "admin"
+    role:       str = "user"
     manager_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
@@ -109,8 +97,7 @@ class ChangePasswordRequest(BaseModel):
 # ── Behavior ──────────────────────────────────────────────────────────────────
 
 class BehaviorPayload(BaseModel):
-    """Feature vector sent from browser or Python collector every 5 s."""
-    typing_wpm:          Optional[int] = None   # None = not enough data; 0 treated as None
+    typing_wpm:          Optional[int] = None
     chars_per_min:       int   = 0
     avg_hold_ms:         float = 0.0
     avg_flight_ms:       float = 0.0
@@ -127,7 +114,6 @@ class BehaviorPayload(BaseModel):
     avg_hover_ms:        float = 0.0
     avg_acceleration:    float = 0.0
     movement_smoothness: float = 0.0
-    # Display-only counts for the live dashboard (not stored, not ML features)
     keys_pressed:        Optional[int] = None
     mouse_events:        Optional[int] = None
 
@@ -141,9 +127,9 @@ class BehaviorResponse(BaseModel):
 # ── Prediction ────────────────────────────────────────────────────────────────
 
 class PredictionResponse(BaseModel):
-    load_level:  str          # low | medium | high
+    load_level:  str
     confidence:  float
-    scores:      dict         # {low: .., medium: .., high: ..}
+    scores:      dict
     session_id:  int
 
 
@@ -222,7 +208,7 @@ class EndSessionResponse(BaseModel):
 # ── Reports ───────────────────────────────────────────────────────────────────
 
 class DailyReportEntry(BaseModel):
-    date:              str         # YYYY-MM-DD
+    date:              str
     sessions:          int
     predictions:       int
     avg_wpm:           float
@@ -235,7 +221,7 @@ class DailyReportResponse(BaseModel):
 
 
 class WeeklyReportEntry(BaseModel):
-    week_start:        str         # YYYY-MM-DD (Monday)
+    week_start:        str
     sessions:          int
     predictions:       int
     avg_wpm:           float
@@ -273,7 +259,7 @@ class FeatureStatEntry(BaseModel):
 
 class AnalyticsFeaturesResponse(BaseModel):
     stats:         list[FeatureStatEntry]
-    per_load:      dict   # {low: {feature: mean}, medium: ..., high: ...}
+    per_load:      dict
     total_records: int
 
 
@@ -309,7 +295,7 @@ class SettingsUpdateRequest(BaseModel):
         return v
 
 
-# ── History (extended) ────────────────────────────────────────────────────────
+# ── History paginated ─────────────────────────────────────────────────────────
 
 class HistoryResponsePaginated(BaseModel):
     sessions:    list[SessionOut]
@@ -342,7 +328,6 @@ class AppUsageEntry(BaseModel):
 
 
 class AppUsageBatchPayload(BaseModel):
-    """Sent by the collector once per flush window."""
     usages: list[AppUsageEntry]
 
 
@@ -359,22 +344,23 @@ class AppUsageOut(BaseModel):
 class AppUsageSummaryEntry(BaseModel):
     process:           str
     total_seconds:     float
-    percentage:        float   # 0–100, share of total tracked time
+    percentage:        float
     last_window_title: str
 
 
 class AppUsageSummaryResponse(BaseModel):
     period_hours:  int
-    total_tracked: float       # total seconds across all apps
+    total_tracked: float
     apps:          list[AppUsageSummaryEntry]
+
 
 # ── Admin / Team Management ───────────────────────────────────────────────────
 
 class AdminRegisterEmployeeRequest(BaseModel):
-    """Admin creates an account for an employee."""
-    name:     str
-    email:    EmailStr
-    password: str
+    name:       str
+    email:      EmailStr
+    password:   str
+    department: Optional[str] = None
 
     @field_validator("password")
     @classmethod
@@ -385,11 +371,11 @@ class AdminRegisterEmployeeRequest(BaseModel):
 
 
 class AdminUpdateEmployeeRequest(BaseModel):
-    """Admin updates an employee account."""
-    name:     Optional[str]      = None
-    email:    Optional[EmailStr] = None
-    password: Optional[str]      = None
-    is_active: Optional[bool]    = None
+    name:       Optional[str]      = None
+    email:      Optional[EmailStr] = None
+    password:   Optional[str]      = None
+    is_active:  Optional[bool]     = None
+    department: Optional[str]      = None   # empty string "" clears it
 
     @field_validator("password")
     @classmethod
@@ -404,6 +390,7 @@ class EmployeeOut(BaseModel):
     name:       str
     email:      str
     is_active:  bool
+    department: Optional[str]      = None
     created_at: Optional[datetime] = None
     role:       str = "employee"
 
@@ -411,7 +398,6 @@ class EmployeeOut(BaseModel):
 
 
 class EmployeeDetailOut(EmployeeOut):
-    """Employee summary including recent cognitive load snapshot."""
     latest_load:       Optional[str]   = None
     latest_confidence: Optional[float] = None
     sessions_today:    int             = 0
@@ -420,7 +406,7 @@ class EmployeeDetailOut(EmployeeOut):
 
 class AdminAlertRequest(BaseModel):
     employee_id: int
-    alert_type:  str = "custom"    # high_load | low_load | custom
+    alert_type:  str = "custom"
     title:       str
     message:     str
 
@@ -441,10 +427,40 @@ class AdminAlertOut(BaseModel):
     title:       str
     message:     str
     is_read:     bool
+    is_auto:     bool = False
     created_at:  Optional[datetime] = None
     read_at:     Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class AlertHistoryResponse(BaseModel):
+    """Paginated, filterable alert history returned by GET /admin/alerts."""
+    alerts:      list[AdminAlertOut]
+    total:       int
+    page:        int
+    per_page:    int
+    total_pages: int
+
+
+class BulkAlertRequest(BaseModel):
+    """Send the same alert to multiple employees at once."""
+    employee_ids: list[int] = []   # empty = all active employees
+    alert_type:   str       = "custom"
+    title:        str
+    message:      str
+
+    @field_validator("alert_type")
+    @classmethod
+    def valid_alert_type(cls, v):
+        if v not in {"high_load", "low_load", "custom"}:
+            raise ValueError("alert_type must be high_load | low_load | custom")
+        return v
+
+
+class BulkAlertResponse(BaseModel):
+    sent_count:   int
+    employee_ids: list[int]
 
 
 class EmployeeAppUsageSummaryResponse(BaseModel):
@@ -452,11 +468,10 @@ class EmployeeAppUsageSummaryResponse(BaseModel):
     employee_name: str
     period_hours:  int
     total_tracked: float
-    apps:          list  # list[AppUsageSummaryEntry] — reuses existing type
+    apps:          list
 
 
 class EmployeeCogniLoadSnapshot(BaseModel):
-    """Latest cognitive-load summary for one employee — used on admin dashboard."""
     employee_id:       int
     employee_name:     str
     email:             str
@@ -464,7 +479,7 @@ class EmployeeCogniLoadSnapshot(BaseModel):
     latest_confidence: Optional[float] = None
     sessions_today:    int             = 0
     avg_load_today:    Optional[str]   = None
-    top_app:           Optional[str]   = None   # most-used app in last 8 h
+    top_app:           Optional[str]   = None
     unread_alerts:     int             = 0
 
 
@@ -485,20 +500,22 @@ class AlertTemplate(BaseModel):
 
 
 class AdminSettingsOut(BaseModel):
-    high_load_threshold_count: int   = 0
-    min_confidence:            float = 0.75
-    dashboard_refresh_sec:     int   = 60
-    alert_templates:           list[AlertTemplate] = []
-    updated_at:                Optional[datetime]  = None
+    high_load_threshold_count:   int   = 0
+    high_load_threshold_minutes: int   = 0
+    min_confidence:              float = 0.75
+    dashboard_refresh_sec:       int   = 60
+    alert_templates:             list[AlertTemplate] = []
+    updated_at:                  Optional[datetime]  = None
 
     model_config = {"from_attributes": True}
 
 
 class AdminSettingsUpdate(BaseModel):
-    high_load_threshold_count: Optional[int]               = None
-    min_confidence:            Optional[float]             = None
-    dashboard_refresh_sec:     Optional[int]               = None
-    alert_templates:           Optional[list[AlertTemplate]] = None
+    high_load_threshold_count:   Optional[int]                 = None
+    high_load_threshold_minutes: Optional[int]                 = None
+    min_confidence:              Optional[float]               = None
+    dashboard_refresh_sec:       Optional[int]                 = None
+    alert_templates:             Optional[list[AlertTemplate]] = None
 
     @field_validator("min_confidence")
     @classmethod
@@ -514,6 +531,13 @@ class AdminSettingsUpdate(BaseModel):
             raise ValueError("high_load_threshold_count must be >= 0")
         return v
 
+    @field_validator("high_load_threshold_minutes")
+    @classmethod
+    def minutes_non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("high_load_threshold_minutes must be >= 0")
+        return v
+
     @field_validator("alert_templates")
     @classmethod
     def max_five_templates(cls, v):
@@ -525,19 +549,12 @@ class AdminSettingsUpdate(BaseModel):
 # ── Promote / Transfer ────────────────────────────────────────────────────────
 
 class PromoteRequest(BaseModel):
-    """Body for POST /admin/employees/{id}/promote"""
-    # No body fields needed — the endpoint is self-describing.
-    # Kept as a schema so OpenAPI documents it properly.
     pass
 
 
 class TransferTeamRequest(BaseModel):
-    """
-    Transfer all (or selected) employees from the calling admin to another admin.
-    Pass employee_ids to transfer only specific members; omit to transfer everyone.
-    """
     target_admin_id: int
-    employee_ids:    Optional[list[int]] = None   # None → all team members
+    employee_ids:    Optional[list[int]] = None
 
 
 class TransferTeamResponse(BaseModel):
@@ -552,8 +569,8 @@ class AuditLogOut(BaseModel):
     id:         int
     admin_id:   int
     action:     str
-    target_id:  Optional[int]  = None
-    detail:     Optional[str]  = None
+    target_id:  Optional[int]      = None
+    detail:     Optional[str]      = None
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}

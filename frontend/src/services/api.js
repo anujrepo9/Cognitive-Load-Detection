@@ -560,10 +560,53 @@ export const adminAPI = {
     withAutoRefresh((tok) => httpFetch("GET", `/admin/employees/${id}/app-usage?hours=${hours}`, { token: tok }), "/admin/employees"),
   employeeSessions:   (id, page = 1, perPage = 10) =>
     withAutoRefresh((tok) => httpFetch("GET", `/admin/employees/${id}/sessions?page=${page}&per_page=${perPage}`, { token: tok }), "/admin/employees"),
-  sendAlert:          (body) =>
+  employeeLoadTrends: (id, period = "daily", days = 30) =>
+    withAutoRefresh((tok) => httpFetch("GET", `/admin/employees/${id}/load-trends?period=${period}&days=${days}`, { token: tok }), "/admin/employees"),
+  sendAlert: (body) =>
     withAutoRefresh((tok) => httpFetch("POST", "/admin/alerts", { body, token: tok }), "/admin/alerts"),
+  
+  bulkAlert: (body) =>
+  withAutoRefresh((tok) => httpFetch("POST", "/admin/alerts/bulk", { body, token: tok }), "/admin/alerts"),
+
+  teamExport: async (params = {}) => {
+    // Returns a Blob; triggers browser download directly
+    const qs = new URLSearchParams()
+    if (params.date_from)  qs.set("date_from",   params.date_from)
+    if (params.date_to)    qs.set("date_to",     params.date_to)
+    if (params.department) qs.set("department",  params.department)
+    const path = `/admin/team-export${qs.toString() ? "?" + qs.toString() : ""}`
+    const { token } = getTokens()
+    const BASE = window.__TAURI__
+      ? "http://127.0.0.1:8000/api"
+      : (import.meta.env.VITE_API_URL || "/api")
+    const res = await fetch(`${BASE}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error("Export failed")
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement("a")
+    a.href     = url
+    a.download = `team-export-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+
   listAlerts:         () =>
     withAutoRefresh((tok) => httpFetch("GET", "/admin/alerts", { token: tok }), "/admin/alerts"),
+  listAlertsHistory:  (params = {}) => {
+    const qs = new URLSearchParams()
+    if (params.page        != null) qs.set("page",        params.page)
+    if (params.per_page    != null) qs.set("per_page",    params.per_page)
+    if (params.employee_id != null) qs.set("employee_id", params.employee_id)
+    if (params.alert_type  != null) qs.set("alert_type",  params.alert_type)
+    if (params.is_read     != null) qs.set("is_read",     params.is_read)
+    if (params.is_auto     != null) qs.set("is_auto",     params.is_auto)
+    if (params.date_from   != null) qs.set("date_from",   params.date_from)
+    if (params.date_to     != null) qs.set("date_to",     params.date_to)
+    const path = `/admin/alerts${qs.toString() ? "?" + qs.toString() : ""}`
+    return withAutoRefresh((tok) => httpFetch("GET", path, { token: tok }), "/admin/alerts")
+  },
   alertsForEmployee:  (id) =>
     withAutoRefresh((tok) => httpFetch("GET", `/admin/alerts/employee/${id}`, { token: tok }), "/admin/alerts"),
   deleteAlert:        (alertId) =>

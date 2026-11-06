@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
-  Bell, Send, Trash2, AlertTriangle, CheckCircle2, Users,
+  Bell, Send, Trash2, AlertTriangle, CheckCircle2, Zap,
 } from "lucide-react"
 import { adminAPI, getErrorMessage } from "../../services/api"
 import { useToast } from "../../components/ui/Toast"
@@ -36,6 +36,9 @@ export default function AdminAlerts() {
   const [loading,    setLoading]    = useState(true)
   const [sending,    setSending]    = useState(false)
 
+  // Filter: "all" | "manual" | "auto"
+  const [filter, setFilter] = useState("all")
+
   const [form, setForm] = useState({
     employee_id: "",
     alert_type:  "custom",
@@ -55,8 +58,8 @@ export default function AdminAlerts() {
         adminAPI.listEmployees(),
         adminAPI.listAlerts(),
       ])
-      setEmployees(emps)
-      setSentAlerts(als)
+      setEmployees(Array.isArray(emps) ? emps : [])
+      setSentAlerts(Array.isArray(als) ? als : Array.isArray(als?.alerts) ? als.alerts : [] );
     } catch (err) {
       toast("error", getErrorMessage(err))
     } finally {
@@ -79,9 +82,8 @@ export default function AdminAlerts() {
       })
       toast("success", "Alert sent")
       setForm(p => ({ ...p, title: "", message: "" }))
-      // Refresh alert list
       const als = await adminAPI.listAlerts()
-      setSentAlerts(als)
+      setSentAlerts(Array.isArray(als) ? als : Array.isArray(als?.alerts) ? als.alerts : [] );
     } catch (err) {
       toast("error", getErrorMessage(err))
     } finally {
@@ -100,6 +102,14 @@ export default function AdminAlerts() {
   }
 
   const employeeName = (id) => employees.find(e => e.id === id)?.name || `#${id}`
+
+  const visibleAlerts = sentAlerts.filter(a => {
+    if (filter === "auto")   return a.is_auto
+    if (filter === "manual") return !a.is_auto
+    return true
+  })
+
+  const autoCount = sentAlerts.filter(a => a.is_auto).length
 
   if (loading) return <SkeletonPage />
 
@@ -175,28 +185,59 @@ export default function AdminAlerts() {
               {sending ? "Sending…" : "Send Alert"}
             </button>
           </div>
+
+          {/* Auto-alert info card */}
+          {autoCount > 0 && (
+            <div className="rounded-xl px-4 py-3 flex items-start gap-3"
+              style={{ background: "rgba(255,83,100,0.06)", border: "1px solid rgba(255,83,100,0.18)" }}>
+              <Zap className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#FF5364" }} />
+              <p className="text-[12px]" style={{ color: "#FF5364" }}>
+                <span className="font-bold">{autoCount}</span> alert{autoCount !== 1 ? "s were" : " was"} fired automatically by the high-load monitor.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Sent alerts list */}
         <div className="lg:col-span-3">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] mb-3" style={{ color: "#536477" }}>
-            Sent Alerts ({sentAlerts.length})
-          </p>
-          {sentAlerts.length === 0 ? (
+          {/* Filter tabs */}
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.08em] mr-auto" style={{ color: "#536477" }}>
+              Sent Alerts ({sentAlerts.length})
+            </p>
+            {["all", "manual", "auto"].map(f => (
+              <button key={f} onClick={() => setFilter(f)}
+                className="px-3 py-1 rounded-lg text-[11px] font-medium transition-all capitalize"
+                style={filter === f
+                  ? { background: "rgba(0,217,232,0.10)", border: "1px solid rgba(0,217,232,0.22)", color: "#00D9E8" }
+                  : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(100,170,190,0.12)", color: "#536477" }}>
+                {f}
+              </button>
+            ))}
+          </div>
+
+          {visibleAlerts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 rounded-2xl"
               style={{ border: "1px dashed rgba(100,170,190,0.14)" }}>
               <Bell className="w-8 h-8 mb-3" style={{ color: "#536477" }} />
-              <p className="text-[14px]" style={{ color: "#536477" }}>No alerts sent yet</p>
+              <p className="text-[14px]" style={{ color: "#536477" }}>
+                {filter === "auto" ? "No auto-alerts yet" : filter === "manual" ? "No manual alerts yet" : "No alerts sent yet"}
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {sentAlerts.map((alert, i) => (
+              {visibleAlerts.map((alert, i) => (
                 <motion.div key={alert.id}
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.03 }}
                   className="rounded-xl p-4"
-                  style={{ background: "#0B1420", border: "1px solid rgba(100,170,190,0.14)" }}>
+                  style={{
+                    background: "#0B1420",
+                    border: alert.is_auto
+                      ? "1px solid rgba(255,83,100,0.22)"
+                      : "1px solid rgba(100,170,190,0.14)",
+                  }}>
                   <div className="flex items-start gap-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                       style={{
@@ -213,6 +254,13 @@ export default function AdminAlerts() {
                         <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: "rgba(119,117,255,0.10)", color: "#7775FF" }}>
                           → {employeeName(alert.employee_id)}
                         </span>
+                        {/* Auto badge */}
+                        {alert.is_auto && (
+                          <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-bold"
+                            style={{ background: "rgba(255,83,100,0.12)", color: "#FF5364", border: "1px solid rgba(255,83,100,0.22)" }}>
+                            <Zap className="w-2.5 h-2.5" /> AUTO
+                          </span>
+                        )}
                         {alert.is_read
                           ? <span className="flex items-center gap-1 text-[11px]" style={{ color: "#37D9A0" }}><CheckCircle2 className="w-3 h-3" /> Read</span>
                           : <span className="text-[11px]" style={{ color: "#FFB547" }}>Unread</span>}
