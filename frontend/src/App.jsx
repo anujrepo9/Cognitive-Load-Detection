@@ -22,6 +22,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard"
 import AdminEmployees from "./pages/admin/AdminEmployees"
 import AdminEmployeeDetail from "./pages/admin/AdminEmployeeDetail"
 import AdminAlerts from "./pages/admin/AdminAlerts"
+import AdminAlertHistory from "./pages/admin/AdminAlertHistory"
 import AdminSettings from "./pages/admin/AdminSettings"
 
 // ── Layouts ───────────────────────────────────────────────────────────────────
@@ -49,8 +50,8 @@ function ProtectedLayout() {
 /** Admin-only layout — redirects non-admins to /dashboard */
 function AdminLayout() {
   const { isAuth, isAdmin } = useAuth()
-  if (!isAuth)    return <Navigate to="/login"     replace />
-  if (!isAdmin)   return <Navigate to="/dashboard" replace />
+  if (!isAuth)  return <Navigate to="/login"     replace />
+  if (!isAdmin) return <Navigate to="/dashboard" replace />
 
   return (
     <div className="flex min-h-screen" style={{ background: "#05080D" }}>
@@ -111,6 +112,7 @@ export default function App() {
                 <Route path="/admin/employees"           element={<AdminEmployees />} />
                 <Route path="/admin/employees/:id"       element={<AdminEmployeeDetail />} />
                 <Route path="/admin/alerts"              element={<AdminAlerts />} />
+                <Route path="/admin/alerts/history"      element={<AdminAlertHistory />} />
                 <Route path="/admin/settings"            element={<AdminSettings />} />
               </Route>
 

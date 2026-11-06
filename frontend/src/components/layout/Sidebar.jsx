@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import {
   LayoutDashboard, Activity, History, BarChart3, FileText,
   Lightbulb, Settings, User, LogOut, BrainCircuit, Menu, X,
-  ChevronRight, Users, ShieldCheck, Bell, Settings2,
+  ChevronRight, Users, ShieldCheck, Bell, Settings2, ClipboardList,
 } from "lucide-react"
 import { useAuth } from "../../context/AuthContext"
 
@@ -18,10 +18,11 @@ const employeeLinks = [
 ]
 
 const adminLinks = [
-  { to: "/admin/dashboard",  icon: ShieldCheck, label: "Team Overview"  },
-  { to: "/admin/employees",  icon: Users,       label: "Employees"      },
-  { to: "/admin/alerts",     icon: Bell,        label: "Send Alerts"    },
-  { to: "/admin/settings",   icon: Settings2,   label: "Admin Settings" },
+  { to: "/admin/dashboard",       icon: ShieldCheck,    label: "Team Overview"   },
+  { to: "/admin/employees",       icon: Users,          label: "Employees"       },
+  { to: "/admin/alerts",          icon: Bell,           label: "Send Alerts"     },
+  { to: "/admin/alerts/history",  icon: ClipboardList,  label: "Alert History"   },
+  { to: "/admin/settings",        icon: Settings2,      label: "Admin Settings"  },
 ]
 
 const bottomLinks = [
@@ -108,7 +109,7 @@ function SidebarContent({ user, isAdmin, isEmployee, onLogout, onNavClick }) {
           </>
         )}
 
-        {/* Employee section — always visible (admin can also check own data) */}
+        {/* Employee section */}
         <p className="px-5 mb-2 text-[10px] font-semibold tracking-[0.10em] uppercase"
           style={{ color: "#536477" }}>{isAdmin ? "My Data" : isEmployee ? "My Workspace" : "Navigation"}</p>
         {employeeLinks.map(({ to, icon, label }) => (

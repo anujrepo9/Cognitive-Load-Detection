@@ -44,7 +44,7 @@ def run():
 
     with engine.begin() as conn:
 
-        # ── 1. user_settings table ────────────────────────────────────────────
+        # ── 1. user_settings ──────────────────────────────────────────────────
         if not table_exists(inspector, "user_settings"):
             print("Creating table: user_settings ...")
             conn.execute(text("""
@@ -91,7 +91,6 @@ def run():
                 conn.execute(text(
                     "ALTER TABLE behavior_data ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
                 ))
-                # Back-fill from timestamp column if it exists
                 if col_exists(inspector, "behavior_data", "timestamp"):
                     conn.execute(text(
                         "UPDATE behavior_data SET created_at = timestamp WHERE created_at IS NULL"
@@ -108,12 +107,11 @@ def run():
         else:
             print("[OK] behavior_data.created_at already exists")
 
-        # ── 4. behavior_data — new mouse feature columns ──────────────────────
-        new_behavior_cols = [
+        # ── 4. behavior_data mouse feature columns ────────────────────────────
+        for col, col_type in [
             ("avg_acceleration",    "REAL DEFAULT 0.0"),
             ("movement_smoothness", "REAL DEFAULT 0.0"),
-        ]
-        for col, col_type in new_behavior_cols:
+        ]:
             if not col_exists(inspector, "behavior_data", col):
                 print(f"Adding column: behavior_data.{col} ...")
                 conn.execute(text(
@@ -123,10 +121,7 @@ def run():
             else:
                 print(f"[OK] behavior_data.{col} already exists")
 
-        # ── 4b. sessions.end_time nullable check (already nullable by design) ──
-        # Nothing to migrate — end_time has always been nullable.
-
-        # ── 5. refresh_tokens table ───────────────────────────────────────────
+        # ── 5. refresh_tokens ─────────────────────────────────────────────────
         if not table_exists(inspector, "refresh_tokens"):
             print("Creating table: refresh_tokens ...")
             conn.execute(text("""
@@ -154,12 +149,9 @@ def run():
         else:
             print("[OK] refresh_tokens already exists")
 
-
-        # ── 6. users.role column ─────────────────────────────────────────────────
+        # ── 6. users.role ─────────────────────────────────────────────────────
         if not col_exists(inspector, "users", "role"):
             print("Adding column: users.role ...")
-            # Default is "user" (individual / personal account) for brand-new installs.
-            # On existing DBs the column already exists so this branch is skipped.
             conn.execute(text(
                 "ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'user'"
                 if not IS_SQLITE else
@@ -169,7 +161,7 @@ def run():
         else:
             print("[OK] users.role already exists")
 
-        # ── 7. users.manager_id column ───────────────────────────────────────────
+        # ── 7. users.manager_id ───────────────────────────────────────────────
         if not col_exists(inspector, "users", "manager_id"):
             print("Adding column: users.manager_id ...")
             conn.execute(text(
@@ -181,7 +173,19 @@ def run():
         else:
             print("[OK] users.manager_id already exists")
 
-        # ── 8. admin_alerts table ────────────────────────────────────────────────
+        # ── 8. users.department ───────────────────────────────────────────────
+        if not col_exists(inspector, "users", "department"):
+            print("Adding column: users.department ...")
+            conn.execute(text(
+                "ALTER TABLE users ADD COLUMN department VARCHAR(120)"
+                if not IS_SQLITE else
+                "ALTER TABLE users ADD COLUMN department TEXT"
+            ))
+            print("  [OK] users.department added")
+        else:
+            print("[OK] users.department already exists")
+
+        # ── 9. admin_alerts ───────────────────────────────────────────────────
         if not table_exists(inspector, "admin_alerts"):
             print("Creating table: admin_alerts ...")
             conn.execute(text("""
@@ -193,6 +197,7 @@ def run():
                     title       VARCHAR(200) NOT NULL,
                     message     TEXT NOT NULL,
                     is_read     BOOLEAN DEFAULT FALSE,
+                    is_auto     BOOLEAN NOT NULL DEFAULT FALSE,
                     created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     read_at     TIMESTAMP WITH TIME ZONE
                 )
@@ -205,6 +210,7 @@ def run():
                     title       TEXT NOT NULL,
                     message     TEXT NOT NULL,
                     is_read     INTEGER DEFAULT 0,
+                    is_auto     INTEGER NOT NULL DEFAULT 0,
                     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
                     read_at     DATETIME
                 )
@@ -212,37 +218,56 @@ def run():
             print("  [OK] admin_alerts created")
         else:
             print("[OK] admin_alerts already exists")
+            if not col_exists(inspector, "admin_alerts", "is_auto"):
+                print("Adding column: admin_alerts.is_auto ...")
+                conn.execute(text(
+                    "ALTER TABLE admin_alerts ADD COLUMN is_auto BOOLEAN NOT NULL DEFAULT FALSE"
+                    if not IS_SQLITE else
+                    "ALTER TABLE admin_alerts ADD COLUMN is_auto INTEGER NOT NULL DEFAULT 0"
+                ))
+                print("  [OK] admin_alerts.is_auto added")
+            else:
+                print("[OK] admin_alerts.is_auto already exists")
 
-
-        # ── 9. admin_settings table ──────────────────────────────────────────────
+        # ── 10. admin_settings ────────────────────────────────────────────────
         if not table_exists(inspector, "admin_settings"):
             print("Creating table: admin_settings ...")
             conn.execute(text("""
                 CREATE TABLE admin_settings (
-                    id                         INTEGER PRIMARY KEY,
-                    admin_id                   INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-                    high_load_threshold_count  INTEGER NOT NULL DEFAULT 0,
-                    min_confidence             REAL    NOT NULL DEFAULT 0.75,
-                    dashboard_refresh_sec      INTEGER NOT NULL DEFAULT 60,
-                    alert_templates            TEXT    NOT NULL DEFAULT '[]',
-                    updated_at                 DATETIME DEFAULT CURRENT_TIMESTAMP
+                    id                           INTEGER PRIMARY KEY,
+                    admin_id                     INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                    high_load_threshold_count    INTEGER NOT NULL DEFAULT 0,
+                    high_load_threshold_minutes  INTEGER NOT NULL DEFAULT 0,
+                    min_confidence               REAL    NOT NULL DEFAULT 0.75,
+                    dashboard_refresh_sec        INTEGER NOT NULL DEFAULT 60,
+                    alert_templates              TEXT    NOT NULL DEFAULT '[]',
+                    updated_at                   DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """ if IS_SQLITE else """
                 CREATE TABLE admin_settings (
-                    id                         SERIAL PRIMARY KEY,
-                    admin_id                   INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-                    high_load_threshold_count  INTEGER NOT NULL DEFAULT 0,
-                    min_confidence             REAL    NOT NULL DEFAULT 0.75,
-                    dashboard_refresh_sec      INTEGER NOT NULL DEFAULT 60,
-                    alert_templates            JSONB   NOT NULL DEFAULT '[]',
-                    updated_at                 TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    id                           SERIAL PRIMARY KEY,
+                    admin_id                     INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                    high_load_threshold_count    INTEGER NOT NULL DEFAULT 0,
+                    high_load_threshold_minutes  INTEGER NOT NULL DEFAULT 0,
+                    min_confidence               REAL    NOT NULL DEFAULT 0.75,
+                    dashboard_refresh_sec        INTEGER NOT NULL DEFAULT 60,
+                    alert_templates              JSONB   NOT NULL DEFAULT '[]',
+                    updated_at                   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
             """))
             print("  [OK] admin_settings created")
         else:
             print("[OK] admin_settings already exists")
+            if not col_exists(inspector, "admin_settings", "high_load_threshold_minutes"):
+                print("Adding column: admin_settings.high_load_threshold_minutes ...")
+                conn.execute(text(
+                    "ALTER TABLE admin_settings ADD COLUMN high_load_threshold_minutes INTEGER NOT NULL DEFAULT 0"
+                ))
+                print("  [OK] admin_settings.high_load_threshold_minutes added")
+            else:
+                print("[OK] admin_settings.high_load_threshold_minutes already exists")
 
-        # ── 10. audit_logs table ─────────────────────────────────────────────────
+        # ── 11. audit_logs ────────────────────────────────────────────────────
         if not table_exists(inspector, "audit_logs"):
             print("Creating table: audit_logs ...")
             conn.execute(text("""

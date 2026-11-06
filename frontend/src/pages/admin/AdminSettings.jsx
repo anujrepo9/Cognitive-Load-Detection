@@ -14,7 +14,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import {
   Settings2, Bell, RefreshCw, Save, Loader2, CheckCircle2,
   AlertCircle, Plus, Trash2, Users, ArrowRightLeft, ShieldCheck,
-  ClipboardList, ChevronDown, ChevronUp, X,
+  ClipboardList, ChevronDown, ChevronUp, X, Timer,
 } from "lucide-react"
 import { adminAPI, getErrorMessage } from "../../services/api"
 import { useToast } from "../../components/ui/Toast"
@@ -410,11 +410,14 @@ export default function AdminSettings() {
   const [saved,          setSaved]          = useState(false)
 
   // Local editable copies of settings
-  const [thresholdCount, setThresholdCount] = useState(0)
-  const [minConf,        setMinConf]        = useState(75)   // stored ×100 for display
-  const [refreshSec,     setRefreshSec]     = useState(60)
-  const [autoAlerts,     setAutoAlerts]     = useState(false)
-  const [templates,      setTemplates]      = useState([])
+  const [thresholdCount,   setThresholdCount]   = useState(0)
+  const [thresholdMinutes, setThresholdMinutes] = useState(15)
+  // "count" | "time" — which mode is active
+  const [thresholdMode,    setThresholdMode]    = useState("time")
+  const [minConf,          setMinConf]          = useState(75)   // stored ×100 for display
+  const [refreshSec,       setRefreshSec]       = useState(60)
+  const [autoAlerts,       setAutoAlerts]       = useState(false)
+  const [templates,        setTemplates]        = useState([])
 
   // Transfer modal
   const [showTransfer, setShowTransfer] = useState(false)
@@ -428,10 +431,15 @@ export default function AdminSettings() {
         adminAPI.listEmployees(),
       ])
       setSettings(s)
-      setThresholdCount(s.high_load_threshold_count)
+      setThresholdCount(s.high_load_threshold_count   ?? 0)
+      setThresholdMinutes(s.high_load_threshold_minutes ?? 15)
       setMinConf(Math.round((s.min_confidence ?? 0.75) * 100))
       setRefreshSec(s.dashboard_refresh_sec ?? 60)
-      setAutoAlerts((s.high_load_threshold_count ?? 0) > 0)
+      // Determine active mode from which field is non-zero
+      const hasTime  = (s.high_load_threshold_minutes ?? 0) > 0
+      const hasCount = (s.high_load_threshold_count   ?? 0) > 0
+      setAutoAlerts(hasTime || hasCount)
+      setThresholdMode(hasTime ? "time" : "count")
       setTemplates(s.alert_templates ?? [])
       setEmployees(emps)
     } catch (err) {
@@ -447,10 +455,12 @@ export default function AdminSettings() {
     setSaving(true)
     try {
       await adminAPI.updateSettings({
-        high_load_threshold_count: autoAlerts ? thresholdCount : 0,
-        min_confidence:            minConf / 100,
-        dashboard_refresh_sec:     refreshSec,
-        alert_templates:           templates,
+        // Send only the active mode; zero-out the other
+        high_load_threshold_count:   autoAlerts && thresholdMode === "count" ? thresholdCount   : 0,
+        high_load_threshold_minutes: autoAlerts && thresholdMode === "time"  ? thresholdMinutes : 0,
+        min_confidence:              minConf / 100,
+        dashboard_refresh_sec:       refreshSec,
+        alert_templates:             templates,
       })
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
@@ -490,15 +500,18 @@ export default function AdminSettings() {
       </div>
 
       {/* ── Section 1: Alert Thresholds ──────────────────────────────────── */}
-      <Section icon={Bell} title="Alert Thresholds"
+      <Section icon={Bell} title="Auto-Alert Thresholds"
         iconColor="#FF5364" iconBg="rgba(255,83,100,0.08)" iconBorder="rgba(255,83,100,0.18)">
 
         <div className="space-y-5">
           <Toggle
             on={autoAlerts}
-            onChange={(v) => { setAutoAlerts(v); if (!v) setThresholdCount(0) }}
-            label="Auto-alerts (coming soon)"
-            hint="Automatically fire an alert when an employee's load stays high for N consecutive readings. Backend job required."
+            onChange={(v) => {
+              setAutoAlerts(v)
+              if (!v) { setThresholdCount(0); setThresholdMinutes(0) }
+            }}
+            label="Auto-alerts"
+            hint="Automatically fire an alert when an employee's cognitive load stays high beyond the threshold you set."
           />
 
           <AnimatePresence initial={false}>
@@ -506,18 +519,54 @@ export default function AdminSettings() {
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
                 <div className="pt-2 space-y-5">
-                  <NumberStepper
-                    value={thresholdCount} onChange={setThresholdCount}
-                    min={1} max={30} step={1}
-                    label="Consecutive high-load readings"
-                    hint="How many back-to-back 'high' predictions before an auto-alert fires."
-                    unit=" readings"
-                  />
+
+                  {/* Mode picker */}
+                  <div>
+                    <p className="text-[13px] font-medium mb-2" style={{ color: "#EAF2F8" }}>Trigger mode</p>
+                    <div className="flex gap-2">
+                      {[
+                        { k: "time",  label: "⏱ Time-based",  hint: "Fire after N continuous minutes of high load" },
+                        { k: "count", label: "🔢 Count-based", hint: "Fire after N consecutive high-load readings" },
+                      ].map(({ k, label, hint }) => (
+                        <button key={k} onClick={() => setThresholdMode(k)}
+                          className="flex-1 py-2.5 px-3 rounded-xl text-left transition-all"
+                          style={thresholdMode === k
+                            ? { background: "rgba(255,83,100,0.10)", border: "1px solid rgba(255,83,100,0.28)", color: "#FF5364" }
+                            : { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(100,170,190,0.14)", color: "#8493A7" }}>
+                          <p className="text-[12px] font-bold">{label}</p>
+                          <p className="text-[11px] mt-0.5" style={{ color: thresholdMode === k ? "rgba(255,83,100,0.7)" : "#536477" }}>{hint}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Time-based stepper */}
+                  {thresholdMode === "time" && (
+                    <NumberStepper
+                      value={thresholdMinutes} onChange={setThresholdMinutes}
+                      min={1} max={120} step={5}
+                      label="High-load duration"
+                      hint="An alert fires when an employee has been in 'high' load for this many consecutive minutes."
+                      unit=" min"
+                    />
+                  )}
+
+                  {/* Count-based stepper */}
+                  {thresholdMode === "count" && (
+                    <NumberStepper
+                      value={thresholdCount} onChange={setThresholdCount}
+                      min={1} max={30} step={1}
+                      label="Consecutive high-load readings"
+                      hint="How many back-to-back 'high' predictions before an auto-alert fires."
+                      unit=" readings"
+                    />
+                  )}
+
                   <NumberStepper
                     value={minConf} onChange={setMinConf}
                     min={50} max={99} step={5}
                     label="Minimum confidence"
-                    hint="Predictions below this confidence are ignored when counting toward the threshold."
+                    hint="Predictions below this confidence are ignored when evaluating the threshold."
                     unit="%"
                   />
                 </div>
